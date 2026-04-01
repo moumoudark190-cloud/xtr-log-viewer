@@ -327,8 +327,8 @@ impl LogViewerApp {
 
 const BG_BASE: Color32 = Color32::from_rgb(13, 17, 23);
 const BG_PANEL: Color32 = Color32::from_rgb(22, 27, 34);
-const BG_ROW_HOVER: Color32 = Color32::from_rgba_unmultiplied(255, 255, 255, 9);
-const BG_ROW_SEL: Color32 = Color32::from_rgba_unmultiplied(88, 166, 255, 35);
+const BG_ROW_HOVER: Color32 = Color32::from_rgba_premultiplied(255, 255, 255, 9);
+const BG_ROW_SEL: Color32 = Color32::from_rgba_premultiplied(88, 166, 255, 35);
 const COL_BORDER: Color32 = Color32::from_rgb(48, 54, 61);
 const COL_TEXT: Color32 = Color32::from_gray(210);
 const COL_MUTED: Color32 = Color32::from_gray(120);
