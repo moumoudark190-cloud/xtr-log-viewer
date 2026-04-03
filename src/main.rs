@@ -983,8 +983,9 @@ impl App for LogViewerApp {
                     }
                 });
 
+                // ✅ FIX: store the VISIBLE height of the scroll area, not the content height
+                self.scroll_area_height = out.response.rect.height();
                 self.current_scroll_offset = out.state.offset.y;
-                self.scroll_area_height    = out.inner_rect.height();
             });
     }
 }
