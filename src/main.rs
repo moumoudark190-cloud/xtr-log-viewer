@@ -716,40 +716,49 @@ impl App for LogViewerApp {
                     let ah  = r.height();
 
                     // ── level colour bars ─────────────────────────────────
-                    // For each output pixel row, map it to a band of log rows
-                    // and pick the MOST FREQUENT level in that band.
+                    // Threshold approach:
+                    //   • If the most-severe level present accounts for ≥ 20 %
+                    //     of rows in the bucket → show that colour.
+                    //   • Otherwise fall back to most-frequent.
                     //
-                    // Using min() (most-severe) caused a single ERR among dozens
-                    // of DBG rows to paint the whole pixel red, making the
-                    // minimap look entirely red even on DBG-heavy sections.
-                    // Most-frequent gives an accurate colour representation;
-                    // ties are broken towards more severe (lower index).
+                    // Why:
+                    //   min()  (most-severe-wins) → 1 ERR in 20 DBG rows = RED  (too aggressive)
+                    //   max()  (most-frequent-wins) → 12 ERR + 14 DBG = BLUE    (too permissive)
+                    //   threshold 20 % → 12 ERR in 26 rows = 46 % ≥ 20 % = RED ✓
+                    //                  →  1 ERR in 20 DBG  =  5 % < 20 % = BLUE ✓
+                    const THRESHOLD: f32 = 0.20;
                     let n = n_filt as f32;
                     let pixels = ah as usize;
                     for py in 0..pixels {
                         let i0 = ((py       as f32 * n / ah) as usize).min(n_filt - 1);
                         let i1 = (((py + 1) as f32 * n / ah) as usize).min(n_filt - 1);
-                        let i1 = i1.max(i0); // always cover ≥ 1 row
+                        let i1 = i1.max(i0);
+                        let bucket_size = (i1 - i0 + 1) as f32;
 
-                        // tally level counts in this band
                         let mut counts = [0u16; 5];
                         for i in i0..=i1 {
                             counts[ml[i] as usize] += 1;
                         }
-                        // most frequent; ties → lower index (more severe)
-                        let dominant = counts
-                            .iter()
-                            .enumerate()
-                            .max_by(|&(ia, &ca), &(ib, &cb)| {
-                                ca.cmp(&cb).then(ib.cmp(&ia))
-                            })
-                            .map(|(idx, _)| idx)
-                            .unwrap_or(4);
+
+                        // Most severe level that meets the threshold (ERR first, Trace last)
+                        let dominant = (0..5_usize)
+                            .find(|&lvl| counts[lvl] as f32 / bucket_size >= THRESHOLD)
+                            .unwrap_or_else(|| {
+                                // No level clears threshold → most frequent (tie → more severe)
+                                counts.iter().enumerate()
+                                    .max_by(|&(ia, &ca), &(ib, &cb)| {
+                                        ca.cmp(&cb).then(ib.cmp(&ia))
+                                    })
+                                    .map(|(idx, _)| idx)
+                                    .unwrap_or(4)
+                            });
 
                         let y0 = by0 + py as f32;
-                        let y1 = y0 + 1.6;
                         painter.rect_filled(
-                            egui::Rect::from_min_max(egui::pos2(bx0, y0), egui::pos2(bx1, y1)),
+                            egui::Rect::from_min_max(
+                                egui::pos2(bx0, y0),
+                                egui::pos2(bx1, y0 + 1.6),
+                            ),
                             Rounding::ZERO,
                             MM_COLS[dominant],
                         );
