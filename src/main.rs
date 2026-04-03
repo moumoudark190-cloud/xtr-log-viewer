@@ -538,7 +538,7 @@ impl App for LogViewerApp {
         });
 
         // ════════════════════════════════════════════════════════════════════
-        // TOP TOOLBAR (no rectangle near title)
+        // TOP TOOLBAR
         // ════════════════════════════════════════════════════════════════════
         egui::TopBottomPanel::top("toolbar")
             .frame(egui::Frame::none()
@@ -547,13 +547,16 @@ impl App for LogViewerApp {
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 12.0;
+
+                    // Search bar with visible frame
                     let search_id = egui::Id::new("search_box");
                     let search_style = egui::TextEdit::singleline(&mut self.search)
                         .id(search_id)
                         .hint_text(RichText::new("🔍  Search (Ctrl+F)").color(COL_FAINT))
                         .desired_width(260.0)
                         .font(FontId::monospace(12.0))
-                        .frame(false);
+                        .frame(true)   // enables frame background and border
+                        .stroke(Stroke::new(1.0, COL_BORDER));
                     let re = ui.add(search_style);
                     if re.changed() {
                         self.search_lc = self.search.to_lowercase();
@@ -1023,9 +1026,15 @@ impl App for LogViewerApp {
             .show(ctx, |ui| {
 
                 if self.all_lines.is_empty() {
+                    // Center the empty state content both horizontally and vertically
                     ui.centered_and_justified(|ui| {
                         ui.vertical_centered(|ui| {
-                            ui.add_space(14.0);
+                            // Push content to vertical center
+                            let available = ui.available_height();
+                            let content_height = 120.0; // approximate height of the content
+                            let top_margin = (available - content_height).max(0.0) / 2.0;
+                            ui.add_space(top_margin);
+
                             ui.label(RichText::new("Drop a log file here").size(22.0).color(COL_MUTED));
                             ui.add_space(8.0);
                             ui.label(RichText::new(
