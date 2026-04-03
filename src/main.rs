@@ -89,7 +89,6 @@ fn parse_timestamp_ms(ts: &str) -> Option<u64> {
     } else {
         (sec_rest, "")
     };
-    // strip any non-digit trailer (e.g. timezone)
     let s_str = s_str.trim_end_matches(|c: char| !c.is_ascii_digit());
     let s: u64 = s_str.parse().ok()?;
     let ms: u64 = if frac.is_empty() {
@@ -210,20 +209,17 @@ struct LogViewerApp {
     detail_open: bool,
     status:      String,
     drag_hover:  bool,
-    // minimap cache
     minimap_levels: Vec<u8>,
-    // scroll sync
     scroll_to_offset:       Option<f32>,
     current_scroll_offset:  f32,
     scroll_area_height:     f32,
-    // Advanced search
     advanced_open: bool,
     advanced_term: String,
     case_sensitive: bool,
     whole_word: bool,
     highlight_all: bool,
-    match_rows: Vec<usize>,      // indices in filtered list where term matches
-    current_match: usize,        // index into match_rows (0..len-1)
+    match_rows: Vec<usize>,
+    current_match: usize,
     total_matches: usize,
 }
 
@@ -431,7 +427,6 @@ const COL_MUTED:    Color32 = Color32::from_rgb(150, 155, 165);
 const COL_FAINT:    Color32 = Color32::from_rgb(90, 95, 105);
 const COL_ACCENT:   Color32 = Color32::from_rgb(88, 166, 255);
 
-// column widths (px)
 const COL_LN:  f32 = 54.0;
 const COL_TS:  f32 = 96.0;
 const COL_DT:  f32 = 76.0;
@@ -452,7 +447,6 @@ fn dark_visuals() -> egui::Visuals {
     v
 }
 
-// --- Improved button styles ---
 fn primary_button(text: &str) -> Button<'_> {
     Button::new(RichText::new(text).color(COL_TEXT).font(FontId::proportional(12.0)))
         .fill(Color32::from_rgb(40, 50, 65))
@@ -511,7 +505,6 @@ impl App for LogViewerApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut Frame) {
         ctx.set_visuals(dark_visuals());
 
-        // drag & drop
         ctx.input(|i| {
             self.drag_hover = !i.raw.hovered_files.is_empty();
             for d in &i.raw.dropped_files {
@@ -522,15 +515,25 @@ impl App for LogViewerApp {
             }
         });
 
-        // keyboard
         let open_dialog = ctx.input(|i| i.key_pressed(Key::O) && i.modifiers.ctrl);
         if open_dialog { self.open_file_dialog(); }
 
         ctx.input(|i| {
             if i.key_pressed(Key::Escape) {
-                if !self.search.is_empty() {
+                if self.advanced_open {
+                    self.advanced_open = false;
+                } else if !self.search.is_empty() {
                     self.search.clear(); self.search_lc.clear(); self.apply_filters();
                 } else { self.selected = None; self.detail_open = false; }
+            }
+            if i.key_pressed(Key::Enter) && i.modifiers.ctrl && !self.advanced_term.is_empty() {
+                self.highlight_all = true;
+                self.recompute_advanced_matches();
+            }
+            if i.key_pressed(Key::Enter) && i.modifiers.shift && self.total_matches > 0 {
+                self.prev_match();
+            } else if i.key_pressed(Key::Enter) && self.total_matches > 0 {
+                self.next_match();
             }
         });
 
@@ -554,7 +557,6 @@ impl App for LogViewerApp {
                     );
                     ui.add(egui::Separator::default().vertical().spacing(8.0));
 
-                    // Simple search box
                     let search_id = egui::Id::new("search_box");
                     let search_style = egui::TextEdit::singleline(&mut self.search)
                         .id(search_id)
@@ -571,12 +573,10 @@ impl App for LogViewerApp {
                         ctx.memory_mut(|m| m.request_focus(search_id));
                     }
 
-                    // Advanced search button toggles the window open flag
-                    if ui.add(icon_button("🔧")).on_hover_text("Advanced search (Notepad++ style)").clicked() {
+                    if ui.add(icon_button("🔧")).on_hover_text("Advanced search (Ctrl+H)").clicked() {
                         self.advanced_open = !self.advanced_open;
                     }
 
-                    // Module combo
                     if !self.modules.is_empty() {
                         ui.add(egui::Separator::default().vertical().spacing(8.0));
                         let label = if self.module_filter.is_empty() {
@@ -606,7 +606,6 @@ impl App for LogViewerApp {
 
                     ui.add(egui::Separator::default().vertical().spacing(8.0));
 
-                    // Level toggles
                     let defs: [(usize, &str, Color32); 5] = [
                         (0, "ERR", Level::Error.color()),
                         (1, "WRN", Level::Warning.color()),
@@ -623,7 +622,6 @@ impl App for LogViewerApp {
                     }
                     if filter_changed { self.apply_filters(); }
 
-                    // Right-side controls
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                         ui.spacing_mut().item_spacing.x = 8.0;
 
@@ -652,46 +650,161 @@ impl App for LogViewerApp {
         // ADVANCED SEARCH WINDOW (Notepad++ style)
         // ════════════════════════════════════════════════════════════════════
         if self.advanced_open {
-            Window::new("Advanced Search")
+            Window::new("🔍  Find")
                 .collapsible(false)
                 .resizable(false)
-                .default_size([400.0, 180.0])
+                .default_size([540.0, 260.0])
+                .frame(egui::Frame::none()
+                    .fill(BG_PANEL)
+                    .stroke(Stroke::new(1.0, COL_BORDER))
+                    .inner_margin(egui::Margin::symmetric(14.0, 12.0)))
                 .show(ctx, |ui| {
-                    ui.heading("Find what:");
-                    let term_changed = ui.text_edit_singleline(&mut self.advanced_term).changed();
+                    ui.spacing_mut().item_spacing = Vec2::new(8.0, 8.0);
 
-                    let case_changed = ui.checkbox(&mut self.case_sensitive, "Match case").changed();
-                    let word_changed = ui.checkbox(&mut self.whole_word, "Whole word").changed();
-                    let highlight_changed = ui.checkbox(&mut self.highlight_all, "Highlight all").changed();
-
-                    if term_changed || case_changed || word_changed || highlight_changed {
-                        self.recompute_advanced_matches();
-                    }
-                    ui.separator();
+                    // ── Find what field ──────────────────────────────────────
                     ui.horizontal(|ui| {
-                        if ui.button("Count").clicked() {
+                        ui.label(RichText::new("Find:").color(COL_TEXT).font(FontId::proportional(11.0)).strong());
+                        let term_changed = ui.text_edit_singleline(&mut self.advanced_term)
+                            .desired_width(f32::INFINITY)
+                            .changed();
+                        if term_changed {
                             self.recompute_advanced_matches();
-                            self.status = format!("Found {} matches", self.total_matches);
-                        }
-                        if ui.button("Find Next").clicked() {
-                            self.next_match();
-                        }
-                        if ui.button("Find Previous").clicked() {
-                            self.prev_match();
-                        }
-                        ui.add_space(20.0);
-                        ui.label(RichText::new(format!("Matches: {}", self.total_matches)).color(COL_ACCENT));
-                        if self.total_matches > 0 {
-                            ui.label(format!(" (match {} of {})", self.current_match + 1, self.total_matches));
                         }
                     });
-                    if !self.advanced_term.is_empty() && self.total_matches == 0 && self.highlight_all {
-                        ui.colored_label(Color32::from_rgb(255, 100, 100), "No matches found.");
-                    }
+
+                    // ── Options grid ─────────────────────────────────────────
+                    ui.columns(2, |cols| {
+                        cols[0].vertical(|ui| {
+                            let case_changed = ui.checkbox(&mut self.case_sensitive, 
+                                RichText::new("Match case").color(COL_TEXT)).changed();
+                            let word_changed = ui.checkbox(&mut self.whole_word,
+                                RichText::new("Whole word").color(COL_TEXT)).changed();
+                            if case_changed || word_changed {
+                                self.recompute_advanced_matches();
+                            }
+                        });
+                        cols[1].vertical(|ui| {
+                            let highlight_changed = ui.checkbox(&mut self.highlight_all,
+                                RichText::new("Highlight all").color(COL_TEXT)).changed();
+                            if highlight_changed {
+                                self.recompute_advanced_matches();
+                            }
+                        });
+                    });
+
+                    ui.add(egui::Separator::default().horizontal().spacing(4.0));
+
+                    // ── Results status ───────────────────────────────────────
+                    ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing.x = 12.0;
+                        
+                        let status_text = if self.advanced_term.is_empty() {
+                            RichText::new("Enter search term").color(COL_FAINT)
+                        } else if self.total_matches == 0 {
+                            RichText::new("No matches found").color(Color32::from_rgb(255, 120, 100))
+                        } else if self.total_matches == 1 {
+                            RichText::new("1 match").color(COL_ACCENT)
+                        } else {
+                            RichText::new(format!("{} matches", self.total_matches)).color(COL_ACCENT)
+                        };
+                        ui.label(status_text.font(FontId::monospace(11.0)).strong());
+
+                        if self.total_matches > 0 {
+                            ui.separator();
+                            ui.label(
+                                RichText::new(format!("match {} / {}", self.current_match + 1, self.total_matches))
+                                    .color(COL_MUTED)
+                                    .font(FontId::monospace(10.0))
+                            );
+                        }
+
+                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                            if ui.button("✕").on_hover_text("Close (Esc)").clicked() {
+                                self.advanced_open = false;
+                            }
+                        });
+                    });
+
+                    ui.add(egui::Separator::default().horizontal().spacing(4.0));
+
+                    // ── Action buttons ───────────────────────────────────────
+                    ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing.x = 6.0;
+
+                        if ui.add(
+                            Button::new(RichText::new("⬇ Find Next").color(COL_TEXT)
+                                .font(FontId::proportional(11.0)))
+                                .fill(Color32::from_rgb(40, 50, 65))
+                                .stroke(Stroke::new(0.5, COL_BORDER))
+                                .rounding(Rounding::same(6.0))
+                                .min_size(Vec2::new(0.0, 30.0))
+                        ).on_hover_text("Find next match (Enter)").clicked() {
+                            self.next_match();
+                        }
+
+                        if ui.add(
+                            Button::new(RichText::new("⬆ Find Previous").color(COL_TEXT)
+                                .font(FontId::proportional(11.0)))
+                                .fill(Color32::from_rgb(40, 50, 65))
+                                .stroke(Stroke::new(0.5, COL_BORDER))
+                                .rounding(Rounding::same(6.0))
+                                .min_size(Vec2::new(0.0, 30.0))
+                        ).on_hover_text("Find previous match (Shift+Enter)").clicked() {
+                            self.prev_match();
+                        }
+
+                        ui.separator();
+
+                        if ui.add(
+                            Button::new(RichText::new("📊 Count All").color(COL_TEXT)
+                                .font(FontId::proportional(11.0)))
+                                .fill(Color32::from_rgb(40, 50, 65))
+                                .stroke(Stroke::new(0.5, COL_BORDER))
+                                .rounding(Rounding::same(6.0))
+                                .min_size(Vec2::new(0.0, 30.0))
+                        ).on_hover_text("Count all matches").clicked() {
+                            self.recompute_advanced_matches();
+                            if self.total_matches > 0 {
+                                self.status = format!("Found {} matches", self.total_matches);
+                            }
+                        }
+
+                        if ui.add(
+                            Button::new(RichText::new("✓ Find All").color(COL_TEXT)
+                                .font(FontId::proportional(11.0)))
+                                .fill(Color32::from_rgb(40, 50, 65))
+                                .stroke(Stroke::new(0.5, COL_BORDER))
+                                .rounding(Rounding::same(6.0))
+                                .min_size(Vec2::new(0.0, 30.0))
+                        ).on_hover_text("Highlight all matches (Ctrl+Enter)").clicked() {
+                            self.highlight_all = true;
+                            self.recompute_advanced_matches();
+                        }
+
+                        if ui.add(
+                            Button::new(RichText::new("✕ Clear All").color(Color32::from_rgb(200, 120, 100))
+                                .font(FontId::proportional(11.0)))
+                                .fill(Color32::from_rgb(50, 30, 30))
+                                .stroke(Stroke::new(0.5, Color32::from_rgb(150, 80, 70)))
+                                .rounding(Rounding::same(6.0))
+                                .min_size(Vec2::new(0.0, 30.0))
+                        ).on_hover_text("Clear highlights").clicked() {
+                            self.highlight_all = false;
+                            self.match_rows.clear();
+                            self.total_matches = 0;
+                            self.current_match = 0;
+                        }
+                    });
+
+                    ui.add_space(4.0);
+
+                    // ── Keyboard shortcuts reference ──────────────────────────
                     ui.separator();
-                    if ui.button("Close").clicked() {
-                        self.advanced_open = false;
-                    }
+                    ui.label(
+                        RichText::new("⌨ Enter  Next  •  Shift+Enter  Previous  •  Ctrl+Enter  Find All")
+                            .color(COL_FAINT)
+                            .font(FontId::monospace(9.5))
+                    );
                 });
         }
 
@@ -952,7 +1065,7 @@ impl App for LogViewerApp {
                             ).clicked() { self.open_file_dialog(); }
                             ui.add_space(12.0);
                             ui.label(RichText::new(
-                                "Ctrl+O  open  |  Ctrl+F  search  |  Esc  clear/deselect  |  Click row  →  detail"
+                                "Ctrl+O  open  |  Ctrl+F  search  |  Ctrl+H  advanced  |  Esc  clear/deselect"
                             ).size(11.0).color(COL_FAINT));
                         });
                     });
