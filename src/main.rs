@@ -647,167 +647,160 @@ impl App for LogViewerApp {
             });
 
         // ════════════════════════════════════════════════════════════════════
-        // ADVANCED SEARCH WINDOW (Notepad++ style)
+        // ADVANCED SEARCH WINDOW
         // ════════════════════════════════════════════════════════════════════
         if self.advanced_open {
-    Window::new("🔍  Find")
-        .collapsible(false)
-        .resizable(false)
-        .default_size([540.0, 260.0])
-        .frame(egui::Frame::none()
-            .fill(BG_PANEL)
-            .stroke(Stroke::new(1.0, COL_BORDER))
-            .inner_margin(egui::Margin::symmetric(14.0, 12.0)))
-        .show(ctx, |ui| {
-            ui.spacing_mut().item_spacing = Vec2::new(8.0, 8.0);
+            Window::new("🔍  Find")
+                .collapsible(false)
+                .resizable(false)
+                .default_size([540.0, 260.0])
+                .frame(egui::Frame::none()
+                    .fill(BG_PANEL)
+                    .stroke(Stroke::new(1.0, COL_BORDER))
+                    .inner_margin(egui::Margin::symmetric(14.0, 12.0)))
+                .show(ctx, |ui| {
+                    ui.spacing_mut().item_spacing = Vec2::new(8.0, 8.0);
 
-            // ── Find what field ──────────────────────────────────────
-            ui.horizontal(|ui| {
-                ui.label(RichText::new("Find:").color(COL_TEXT).font(FontId::proportional(11.0)).strong());
-                // FIX: build TextEdit first, then show
-                let text_edit = egui::TextEdit::singleline(&mut self.advanced_term)
-                    .desired_width(f32::INFINITY);
-                let response = text_edit.show(ui);
-                if response.response.changed() {
-                    self.recompute_advanced_matches();
-                }
-            });
+                    ui.horizontal(|ui| {
+                        ui.label(RichText::new("Find:").color(COL_TEXT).font(FontId::proportional(11.0)).strong());
+                        let text_edit = egui::TextEdit::singleline(&mut self.advanced_term)
+                            .desired_width(f32::INFINITY);
+                        let response = text_edit.show(ui);
+                        if response.response.changed() {
+                            self.recompute_advanced_matches();
+                        }
+                    });
 
-            // ── Options grid ─────────────────────────────────────────
-            ui.columns(2, |cols| {
-                cols[0].vertical(|ui| {
-                    let case_changed = ui.checkbox(&mut self.case_sensitive, 
-                        RichText::new("Match case").color(COL_TEXT)).changed();
-                    let word_changed = ui.checkbox(&mut self.whole_word,
-                        RichText::new("Whole word").color(COL_TEXT)).changed();
-                    if case_changed || word_changed {
-                        self.recompute_advanced_matches();
-                    }
-                });
-                cols[1].vertical(|ui| {
-                    let highlight_changed = ui.checkbox(&mut self.highlight_all,
-                        RichText::new("Highlight all").color(COL_TEXT)).changed();
-                    if highlight_changed {
-                        self.recompute_advanced_matches();
-                    }
-                });
-            });
+                    ui.columns(2, |cols| {
+                        cols[0].vertical(|ui| {
+                            let case_changed = ui.checkbox(&mut self.case_sensitive, 
+                                RichText::new("Match case").color(COL_TEXT)).changed();
+                            let word_changed = ui.checkbox(&mut self.whole_word,
+                                RichText::new("Whole word").color(COL_TEXT)).changed();
+                            if case_changed || word_changed {
+                                self.recompute_advanced_matches();
+                            }
+                        });
+                        cols[1].vertical(|ui| {
+                            let highlight_changed = ui.checkbox(&mut self.highlight_all,
+                                RichText::new("Highlight all").color(COL_TEXT)).changed();
+                            if highlight_changed {
+                                self.recompute_advanced_matches();
+                            }
+                        });
+                    });
 
-            ui.add(egui::Separator::default().horizontal().spacing(4.0));
+                    ui.add(egui::Separator::default().horizontal().spacing(4.0));
 
-            // ── Results status ───────────────────────────────────────
-            ui.horizontal(|ui| {
-                ui.spacing_mut().item_spacing.x = 12.0;
-                
-                let status_text = if self.advanced_term.is_empty() {
-                    RichText::new("Enter search term").color(COL_FAINT)
-                } else if self.total_matches == 0 {
-                    RichText::new("No matches found").color(Color32::from_rgb(255, 120, 100))
-                } else if self.total_matches == 1 {
-                    RichText::new("1 match").color(COL_ACCENT)
-                } else {
-                    RichText::new(format!("{} matches", self.total_matches)).color(COL_ACCENT)
-                };
-                ui.label(status_text.font(FontId::monospace(11.0)).strong());
+                    ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing.x = 12.0;
+                        
+                        let status_text = if self.advanced_term.is_empty() {
+                            RichText::new("Enter search term").color(COL_FAINT)
+                        } else if self.total_matches == 0 {
+                            RichText::new("No matches found").color(Color32::from_rgb(255, 120, 100))
+                        } else if self.total_matches == 1 {
+                            RichText::new("1 match").color(COL_ACCENT)
+                        } else {
+                            RichText::new(format!("{} matches", self.total_matches)).color(COL_ACCENT)
+                        };
+                        ui.label(status_text.font(FontId::monospace(11.0)).strong());
 
-                if self.total_matches > 0 {
+                        if self.total_matches > 0 {
+                            ui.separator();
+                            ui.label(
+                                RichText::new(format!("match {} / {}", self.current_match + 1, self.total_matches))
+                                    .color(COL_MUTED)
+                                    .font(FontId::monospace(10.0))
+                            );
+                        }
+
+                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                            if ui.button("✕").on_hover_text("Close (Esc)").clicked() {
+                                self.advanced_open = false;
+                            }
+                        });
+                    });
+
+                    ui.add(egui::Separator::default().horizontal().spacing(4.0));
+
+                    ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing.x = 6.0;
+
+                        if ui.add(
+                            Button::new(RichText::new("⬇ Find Next").color(COL_TEXT)
+                                .font(FontId::proportional(11.0)))
+                                .fill(Color32::from_rgb(40, 50, 65))
+                                .stroke(Stroke::new(0.5, COL_BORDER))
+                                .rounding(Rounding::same(6.0))
+                                .min_size(Vec2::new(0.0, 30.0))
+                        ).on_hover_text("Find next match (Enter)").clicked() {
+                            self.next_match();
+                        }
+
+                        if ui.add(
+                            Button::new(RichText::new("⬆ Find Previous").color(COL_TEXT)
+                                .font(FontId::proportional(11.0)))
+                                .fill(Color32::from_rgb(40, 50, 65))
+                                .stroke(Stroke::new(0.5, COL_BORDER))
+                                .rounding(Rounding::same(6.0))
+                                .min_size(Vec2::new(0.0, 30.0))
+                        ).on_hover_text("Find previous match (Shift+Enter)").clicked() {
+                            self.prev_match();
+                        }
+
+                        ui.separator();
+
+                        if ui.add(
+                            Button::new(RichText::new("📊 Count All").color(COL_TEXT)
+                                .font(FontId::proportional(11.0)))
+                                .fill(Color32::from_rgb(40, 50, 65))
+                                .stroke(Stroke::new(0.5, COL_BORDER))
+                                .rounding(Rounding::same(6.0))
+                                .min_size(Vec2::new(0.0, 30.0))
+                        ).on_hover_text("Count all matches").clicked() {
+                            self.recompute_advanced_matches();
+                            if self.total_matches > 0 {
+                                self.status = format!("Found {} matches", self.total_matches);
+                            }
+                        }
+
+                        if ui.add(
+                            Button::new(RichText::new("✓ Find All").color(COL_TEXT)
+                                .font(FontId::proportional(11.0)))
+                                .fill(Color32::from_rgb(40, 50, 65))
+                                .stroke(Stroke::new(0.5, COL_BORDER))
+                                .rounding(Rounding::same(6.0))
+                                .min_size(Vec2::new(0.0, 30.0))
+                        ).on_hover_text("Highlight all matches (Ctrl+Enter)").clicked() {
+                            self.highlight_all = true;
+                            self.recompute_advanced_matches();
+                        }
+
+                        if ui.add(
+                            Button::new(RichText::new("✕ Clear All").color(Color32::from_rgb(200, 120, 100))
+                                .font(FontId::proportional(11.0)))
+                                .fill(Color32::from_rgb(50, 30, 30))
+                                .stroke(Stroke::new(0.5, Color32::from_rgb(150, 80, 70)))
+                                .rounding(Rounding::same(6.0))
+                                .min_size(Vec2::new(0.0, 30.0))
+                        ).on_hover_text("Clear highlights").clicked() {
+                            self.highlight_all = false;
+                            self.match_rows.clear();
+                            self.total_matches = 0;
+                            self.current_match = 0;
+                        }
+                    });
+
+                    ui.add_space(4.0);
                     ui.separator();
                     ui.label(
-                        RichText::new(format!("match {} / {}", self.current_match + 1, self.total_matches))
-                            .color(COL_MUTED)
-                            .font(FontId::monospace(10.0))
+                        RichText::new("⌨ Enter  Next  •  Shift+Enter  Previous  •  Ctrl+Enter  Find All")
+                            .color(COL_FAINT)
+                            .font(FontId::monospace(9.5))
                     );
-                }
-
-                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    if ui.button("✕").on_hover_text("Close (Esc)").clicked() {
-                        self.advanced_open = false;
-                    }
                 });
-            });
-
-            ui.add(egui::Separator::default().horizontal().spacing(4.0));
-
-            // ── Action buttons ───────────────────────────────────────
-            ui.horizontal(|ui| {
-                ui.spacing_mut().item_spacing.x = 6.0;
-
-                if ui.add(
-                    Button::new(RichText::new("⬇ Find Next").color(COL_TEXT)
-                        .font(FontId::proportional(11.0)))
-                        .fill(Color32::from_rgb(40, 50, 65))
-                        .stroke(Stroke::new(0.5, COL_BORDER))
-                        .rounding(Rounding::same(6.0))
-                        .min_size(Vec2::new(0.0, 30.0))
-                ).on_hover_text("Find next match (Enter)").clicked() {
-                    self.next_match();
-                }
-
-                if ui.add(
-                    Button::new(RichText::new("⬆ Find Previous").color(COL_TEXT)
-                        .font(FontId::proportional(11.0)))
-                        .fill(Color32::from_rgb(40, 50, 65))
-                        .stroke(Stroke::new(0.5, COL_BORDER))
-                        .rounding(Rounding::same(6.0))
-                        .min_size(Vec2::new(0.0, 30.0))
-                ).on_hover_text("Find previous match (Shift+Enter)").clicked() {
-                    self.prev_match();
-                }
-
-                ui.separator();
-
-                if ui.add(
-                    Button::new(RichText::new("📊 Count All").color(COL_TEXT)
-                        .font(FontId::proportional(11.0)))
-                        .fill(Color32::from_rgb(40, 50, 65))
-                        .stroke(Stroke::new(0.5, COL_BORDER))
-                        .rounding(Rounding::same(6.0))
-                        .min_size(Vec2::new(0.0, 30.0))
-                ).on_hover_text("Count all matches").clicked() {
-                    self.recompute_advanced_matches();
-                    if self.total_matches > 0 {
-                        self.status = format!("Found {} matches", self.total_matches);
-                    }
-                }
-
-                if ui.add(
-                    Button::new(RichText::new("✓ Find All").color(COL_TEXT)
-                        .font(FontId::proportional(11.0)))
-                        .fill(Color32::from_rgb(40, 50, 65))
-                        .stroke(Stroke::new(0.5, COL_BORDER))
-                        .rounding(Rounding::same(6.0))
-                        .min_size(Vec2::new(0.0, 30.0))
-                ).on_hover_text("Highlight all matches (Ctrl+Enter)").clicked() {
-                    self.highlight_all = true;
-                    self.recompute_advanced_matches();
-                }
-
-                if ui.add(
-                    Button::new(RichText::new("✕ Clear All").color(Color32::from_rgb(200, 120, 100))
-                        .font(FontId::proportional(11.0)))
-                        .fill(Color32::from_rgb(50, 30, 30))
-                        .stroke(Stroke::new(0.5, Color32::from_rgb(150, 80, 70)))
-                        .rounding(Rounding::same(6.0))
-                        .min_size(Vec2::new(0.0, 30.0))
-                ).on_hover_text("Clear highlights").clicked() {
-                    self.highlight_all = false;
-                    self.match_rows.clear();
-                    self.total_matches = 0;
-                    self.current_match = 0;
-                }
-            });
-
-            ui.add_space(4.0);
-
-            // ── Keyboard shortcuts reference ──────────────────────────
-            ui.separator();
-            ui.label(
-                RichText::new("⌨ Enter  Next  •  Shift+Enter  Previous  •  Ctrl+Enter  Find All")
-                    .color(COL_FAINT)
-                    .font(FontId::monospace(9.5))
-            );
-        });
-}
+        }
 
         // ════════════════════════════════════════════════════════════════════
         // STATUS BAR
@@ -1033,7 +1026,7 @@ impl App for LogViewerApp {
         }
 
         // ════════════════════════════════════════════════════════════════════
-        // MAIN LOG AREA
+        // MAIN LOG AREA – scrollbar hidden, only minimap
         // ════════════════════════════════════════════════════════════════════
         egui::CentralPanel::default()
             .frame(egui::Frame::none().fill(BG_BASE))
@@ -1057,7 +1050,7 @@ impl App for LogViewerApp {
                             ui.label(RichText::new("Drop a log file here").size(22.0).color(COL_MUTED));
                             ui.add_space(8.0);
                             ui.label(RichText::new(
-                                "Supports XTR · MTF · CARIAD · TLS-Attacker · DiagnosticToolBox formats",
+                                "Better readability for trace analysis · Test output visualization · Log exploration made easy",
                             ).size(12.0).color(COL_FAINT));
                             ui.add_space(22.0);
                             if ui.add(
@@ -1110,7 +1103,8 @@ impl App for LogViewerApp {
                 let mut sa = ScrollArea::vertical()
                     .id_source("log_scroll")
                     .auto_shrink(false)
-                    .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::VisibleWhenNeeded);
+                    // ✅ Hide default scrollbar – only minimap
+                    .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden);
 
                 if let Some(off) = self.scroll_to_offset.take() {
                     sa = sa.scroll_offset(Vec2::new(0.0, off));
