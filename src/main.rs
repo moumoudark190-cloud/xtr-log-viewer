@@ -884,6 +884,9 @@ impl App for LogViewerApp {
                     sa = sa.scroll_offset(Vec2::new(0.0, off));
                 }
 
+                // ✅ FIX: Capture the visible height BEFORE showing the scroll area
+                let visible_height = ui.available_height();
+
                 let out = sa.show_rows(ui, row_h, n, |ui, row_range| {
                     ui.spacing_mut().item_spacing = Vec2::ZERO;
 
@@ -983,8 +986,8 @@ impl App for LogViewerApp {
                     }
                 });
 
-                // ✅ FIX: store the VISIBLE height of the scroll area, not the content height
-                self.scroll_area_height = out.response.rect.height();
+                // Store the visible height (captured before the scroll area)
+                self.scroll_area_height = visible_height;
                 self.current_scroll_offset = out.state.offset.y;
             });
     }
