@@ -214,7 +214,7 @@ struct LogViewerApp {
     // minimap cache (level per filtered row, rebuilt on filter change)
     minimap_levels: Vec<u8>,   // level index 0-4
     // scroll sync
-    scroll_to_row:          Option<usize>,
+    scroll_to_offset:       Option<f32>, // target scroll offset in pixels
     current_scroll_offset:  f32,
     scroll_area_height:     f32,
 }
@@ -232,7 +232,7 @@ impl Default for LogViewerApp {
             status: "Drop a .log / .txt file here or press Ctrl+O".into(),
             drag_hover: false,
             minimap_levels: vec![],
-            scroll_to_row: None,
+            scroll_to_offset: None,
             current_scroll_offset: 0.0,
             scroll_area_height: 0.0,
         }
@@ -671,11 +671,9 @@ impl App for LogViewerApp {
             let scroll_off = self.current_scroll_offset;
             let viewport_h = self.scroll_area_height;
             let ml         = self.minimap_levels.clone();
-            let mut jump_to: Option<usize> = None;
+            let mut jump_to_offset: Option<f32> = None;
 
             // Mirror Level::color() exactly — same hues the row badges use.
-            // MM_DBG was previously rgb(35,80,145): nearly invisible on the
-            // dark panel.  Now matches badge blue rgb(95,165,245).
             const MM_ERR:   Color32 = Color32::from_rgb(245,  95,  85);  // red
             const MM_WRN:   Color32 = Color32::from_rgb(235, 180,  55);  // amber
             const MM_INF:   Color32 = Color32::from_rgb( 70, 200,  95);  // green
@@ -686,22 +684,13 @@ impl App for LogViewerApp {
             egui::SidePanel::right("minimap_panel")
                 .exact_width(34.0)
                 .resizable(false)
-                // Frame::none() so inner margin is zero — we control all geometry
                 .frame(egui::Frame::none().fill(Color32::from_rgb(10, 13, 18)))
                 .show(ctx, |ui| {
-
-                    // ── allocate_painter is the CORRECT API for custom painting
-                    // inside a panel: it sets clip_rect = allocated rect and
-                    // returns the actual pixel rect used. Never use ui.painter()
-                    // + a separately computed rect — they can disagree.
                     let avail = ui.available_rect_before_wrap();
                     let (resp, painter) = ui.allocate_painter(avail.size(), Sense::click_and_drag());
-                    let r = resp.rect;   // guaranteed to match the painter's clip rect
+                    let r = resp.rect;
 
-                    // panel background
                     painter.rect_filled(r, Rounding::ZERO, Color32::from_rgb(10, 13, 18));
-
-                    // left border
                     painter.rect_filled(
                         egui::Rect::from_min_max(r.left_top(), egui::pos2(r.min.x + 1.0, r.max.y)),
                         Rounding::ZERO, COL_BORDER,
@@ -709,23 +698,12 @@ impl App for LogViewerApp {
 
                     if n_filt == 0 { return; }
 
-                    // usable strip (2 px margin left/right inside the border)
                     let bx0 = r.min.x + 3.0;
                     let bx1 = r.max.x - 2.0;
                     let by0 = r.min.y;
                     let ah  = r.height();
 
-                    // ── level colour bars ─────────────────────────────────
-                    // Threshold approach:
-                    //   • If the most-severe level present accounts for ≥ 20 %
-                    //     of rows in the bucket → show that colour.
-                    //   • Otherwise fall back to most-frequent.
-                    //
-                    // Why:
-                    //   min()  (most-severe-wins) → 1 ERR in 20 DBG rows = RED  (too aggressive)
-                    //   max()  (most-frequent-wins) → 12 ERR + 14 DBG = BLUE    (too permissive)
-                    //   threshold 20 % → 12 ERR in 26 rows = 46 % ≥ 20 % = RED ✓
-                    //                  →  1 ERR in 20 DBG  =  5 % < 20 % = BLUE ✓
+                    // draw colour bars (unchanged)
                     const THRESHOLD: f32 = 0.20;
                     let n = n_filt as f32;
                     let pixels = ah as usize;
@@ -740,11 +718,9 @@ impl App for LogViewerApp {
                             counts[ml[i] as usize] += 1;
                         }
 
-                        // Most severe level that meets the threshold (ERR first, Trace last)
                         let dominant = (0..5_usize)
                             .find(|&lvl| counts[lvl] as f32 / bucket_size >= THRESHOLD)
                             .unwrap_or_else(|| {
-                                // No level clears threshold → most frequent (tie → more severe)
                                 counts.iter().enumerate()
                                     .max_by(|&(ia, &ca), &(ib, &cb)| {
                                         ca.cmp(&cb).then(ib.cmp(&ia))
@@ -764,7 +740,7 @@ impl App for LogViewerApp {
                         );
                     }
 
-                    // ── viewport window indicator ─────────────────────────
+                    // viewport window indicator
                     let total_h = n_filt as f32 * row_h;
                     if total_h > 0.0 && viewport_h > 0.0 {
                         let vt = (scroll_off / total_h).clamp(0.0, 1.0);
@@ -782,17 +758,27 @@ impl App for LogViewerApp {
                         );
                     }
 
-                    // ── click / drag to jump ──────────────────────────────
+                    // click/drag to jump – compute target offset, clamped
                     if resp.dragged() || resp.clicked() {
                         if let Some(pos) = resp.interact_pointer_pos() {
                             let frac = ((pos.y - by0) / ah).clamp(0.0, 1.0);
-                            let row  = (frac * n_filt as f32) as usize;
-                            jump_to  = Some(row.min(n_filt.saturating_sub(1)));
+                            let target_row = (frac * n_filt as f32) as usize;
+                            let target_row = target_row.min(n_filt.saturating_sub(1));
+                            // compute offset from row, then clamp to valid range
+                            let mut target_offset = target_row as f32 * row_h;
+                            if total_h > viewport_h {
+                                target_offset = target_offset.min(total_h - viewport_h);
+                            } else {
+                                target_offset = 0.0;
+                            }
+                            jump_to_offset = Some(target_offset);
                         }
                     }
                 });
 
-            if let Some(row) = jump_to { self.scroll_to_row = Some(row); }
+            if let Some(offset) = jump_to_offset {
+                self.scroll_to_offset = Some(offset);
+            }
         }
 
         // ════════════════════════════════════════════════════════════════════
@@ -845,7 +831,7 @@ impl App for LogViewerApp {
                     return;
                 }
 
-                // ── column headers (painted at exact data-row positions) ──
+                // ── column headers ──────────────────────────────────────
                 {
                     let hdr_h = 18.0;
                     let (hdr_rect, _) = ui.allocate_exact_size(
@@ -864,7 +850,6 @@ impl App for LogViewerApp {
                     p.text(egui::pos2(x0 + COL_LN + COL_TS + COL_DT + COL_LV, y), Align2::LEFT_CENTER, "MODULE",  fid.clone(), col);
                     p.text(egui::pos2(x0 + COL_LN + COL_TS + COL_DT + COL_LV + COL_MOD, y), Align2::LEFT_CENTER, "MESSAGE", fid.clone(), col);
                 }
-                // thin separator under header
                 ui.add(egui::Separator::default().horizontal().spacing(1.0));
 
                 // ── virtual-scrolling rows ───────────────────────────────
@@ -872,20 +857,18 @@ impl App for LogViewerApp {
                 let font_sz = self.font_size;
                 let n       = self.filtered.len();
 
-                // consume the pending jump (take → None for next frame)
-                let jump_offset = self.scroll_to_row.take().map(|r| r as f32 * row_h);
+                // capture visible height BEFORE the scroll area
+                let visible_height = ui.available_height();
 
                 let mut sa = ScrollArea::vertical()
                     .id_source("log_scroll")
                     .auto_shrink(false)
                     .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden);
 
-                if let Some(off) = jump_offset {
+                // apply pending scroll offset (if any)
+                if let Some(off) = self.scroll_to_offset.take() {
                     sa = sa.scroll_offset(Vec2::new(0.0, off));
                 }
-
-                // ✅ FIX: Capture the visible height BEFORE showing the scroll area
-                let visible_height = ui.available_height();
 
                 let out = sa.show_rows(ui, row_h, n, |ui, row_range| {
                     ui.spacing_mut().item_spacing = Vec2::ZERO;
@@ -929,18 +912,18 @@ impl App for LogViewerApp {
                         let fxs  = FontId::monospace((font_sz - 2.0).max(7.5));
                         let mut x = row_rect.min.x;
 
-                        // ── line number ──────────────────────────────────
+                        // line number
                         p.text(egui::pos2(x + COL_LN - 6.0, y), Align2::RIGHT_CENTER,
                             line.num.to_string(), fxs.clone(), COL_FAINT);
                         x += COL_LN;
 
-                        // ── timestamp ────────────────────────────────────
+                        // timestamp
                         let ts = if line.timestamp.len() > 12 { &line.timestamp[..12] } else { &line.timestamp };
                         p.text(egui::pos2(x, y), Align2::LEFT_CENTER, ts, fsm.clone(),
                             Color32::from_gray(145));
                         x += COL_TS;
 
-                        // ── delta time ───────────────────────────────────
+                        // delta time
                         if let Some(dms) = line.delta_ms {
                             if dms > 0 {
                                 let s = format_delta(dms);
@@ -956,18 +939,18 @@ impl App for LogViewerApp {
                         }
                         x += COL_DT;
 
-                        // ── level ────────────────────────────────────────
+                        // level
                         p.text(egui::pos2(x, y), Align2::LEFT_CENTER,
                             line.level.label(), fsm.clone(), line.level.color());
                         x += COL_LV;
 
-                        // ── module ───────────────────────────────────────
+                        // module
                         let mod_disp = if line.module.len() > 26 { &line.module[..26] } else { &line.module };
                         p.text(egui::pos2(x, y), Align2::LEFT_CENTER, mod_disp, fsm.clone(),
                             Color32::from_gray(122));
                         x += COL_MOD;
 
-                        // ── message ──────────────────────────────────────
+                        // message
                         let max_chars = ((row_rect.max.x - x - 8.0) / (font_sz * 0.6)) as usize;
                         let msg = &line.message;
                         let msg_disp = if msg.len() > max_chars.max(40) { &msg[..max_chars.max(40)] } else { msg.as_str() };
@@ -978,7 +961,7 @@ impl App for LogViewerApp {
                         };
                         p.text(egui::pos2(x, y), Align2::LEFT_CENTER, msg_disp, fid.clone(), msg_col);
 
-                        // ── click handler ────────────────────────────────
+                        // click handler
                         if resp.clicked() {
                             if is_sel { self.detail_open = !self.detail_open; }
                             else { self.selected = Some(row_idx); self.detail_open = true; }
@@ -986,7 +969,7 @@ impl App for LogViewerApp {
                     }
                 });
 
-                // Store the visible height (captured before the scroll area)
+                // store viewport height and current scroll offset for minimap
                 self.scroll_area_height = visible_height;
                 self.current_scroll_offset = out.state.offset.y;
             });
