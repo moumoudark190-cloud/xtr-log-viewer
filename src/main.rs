@@ -538,12 +538,11 @@ impl App for LogViewerApp {
         });
 
         // ════════════════════════════════════════════════════════════════════
-        // TOP TOOLBAR
+        // TOP TOOLBAR (no rectangle near title)
         // ════════════════════════════════════════════════════════════════════
         egui::TopBottomPanel::top("toolbar")
             .frame(egui::Frame::none()
                 .fill(BG_PANEL)
-                .stroke(Stroke::new(1.0, COL_BORDER))
                 .inner_margin(egui::Margin::symmetric(12.0, 8.0)))
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
@@ -555,7 +554,7 @@ impl App for LogViewerApp {
                             .font(FontId::monospace(13.0))
                             .strong(),
                     );
-                    ui.add(egui::Separator::default().vertical().spacing(8.0));
+                    // Removed the vertical separator that created a rectangle near the text
 
                     let search_id = egui::Id::new("search_box");
                     let search_style = egui::TextEdit::singleline(&mut self.search)
@@ -1026,22 +1025,13 @@ impl App for LogViewerApp {
         }
 
         // ════════════════════════════════════════════════════════════════════
-        // MAIN LOG AREA – scrollbar hidden, only minimap
+        // MAIN LOG AREA (scrollbar hidden, only minimap)
         // ════════════════════════════════════════════════════════════════════
         egui::CentralPanel::default()
             .frame(egui::Frame::none().fill(BG_BASE))
             .show(ctx, |ui| {
 
                 if self.all_lines.is_empty() {
-                    let outer = ui.available_rect_before_wrap();
-                    if self.drag_hover {
-                        ui.painter().rect(
-                            outer.shrink(4.0),
-                            Rounding::same(8.0),
-                            Color32::from_rgba_unmultiplied(88, 166, 255, 22),
-                            Stroke::new(2.0, COL_ACCENT),
-                        );
-                    }
                     ui.centered_and_justified(|ui| {
                         ui.vertical_centered(|ui| {
                             ui.add_space(60.0);
@@ -1103,7 +1093,6 @@ impl App for LogViewerApp {
                 let mut sa = ScrollArea::vertical()
                     .id_source("log_scroll")
                     .auto_shrink(false)
-                    // ✅ Hide default scrollbar – only minimap
                     .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden);
 
                 if let Some(off) = self.scroll_to_offset.take() {
