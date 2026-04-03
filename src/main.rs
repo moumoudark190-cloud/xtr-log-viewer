@@ -217,7 +217,7 @@ struct LogViewerApp {
     current_scroll_offset:  f32,
     scroll_area_height:     f32,
     // Advanced search
-    advanced_open: bool,
+    advanced_window_id: egui::Id,
     advanced_term: String,
     case_sensitive: bool,
     whole_word: bool,
@@ -243,7 +243,7 @@ impl Default for LogViewerApp {
             scroll_to_offset: None,
             current_scroll_offset: 0.0,
             scroll_area_height: 0.0,
-            advanced_open: false,
+            advanced_window_id: egui::Id::new("advanced_search_window"),
             advanced_term: String::new(),
             case_sensitive: false,
             whole_word: false,
@@ -349,7 +349,6 @@ impl LogViewerApp {
                 line.raw.to_lowercase()
             };
             let _matches = if self.whole_word {
-                // crude whole-word: check boundaries
                 let pattern = &term;
                 let mut start = 0;
                 let mut found = false;
@@ -394,7 +393,6 @@ impl LogViewerApp {
         let target_row = self.match_rows[self.current_match];
         let offset = target_row as f32 * self.row_height;
         self.scroll_to_offset = Some(offset);
-        // also select the row
         self.selected = Some(target_row);
         self.detail_open = true;
     }
@@ -573,9 +571,9 @@ impl App for LogViewerApp {
                         ctx.memory_mut(|m| m.request_focus(search_id));
                     }
 
-                    // Advanced search button
+                    // Advanced search button toggles the window via memory
                     if ui.add(icon_button("🔧")).on_hover_text("Advanced search (Notepad++ style)").clicked() {
-                        self.advanced_open = !self.advanced_open;
+                        ctx.memory_mut(|mem| mem.toggle_window_open(self.advanced_window_id));
                     }
 
                     // Module combo
@@ -653,12 +651,13 @@ impl App for LogViewerApp {
         // ════════════════════════════════════════════════════════════════════
         // ADVANCED SEARCH WINDOW (Notepad++ style)
         // ════════════════════════════════════════════════════════════════════
-        if self.advanced_open {
+        let window_open = ctx.memory(|mem| mem.is_window_open(self.advanced_window_id));
+        if window_open {
             Window::new("Advanced Search")
+                .id(self.advanced_window_id)
                 .collapsible(false)
                 .resizable(false)
                 .default_size([400.0, 180.0])
-                .open(&mut self.advanced_open)
                 .show(ctx, |ui| {
                     ui.heading("Find what:");
                     let term_changed = ui.text_edit_singleline(&mut self.advanced_term).changed();
@@ -1015,11 +1014,9 @@ impl App for LogViewerApp {
                         );
                         if !ui.is_rect_visible(row_rect) { continue; }
 
-                        // background color priority: selection > match highlight > hover > row_bg
                         let bg = if is_sel {
                             BG_ROW_SEL
                         } else if is_match {
-                            // Use inline color instead of const
                             Color32::from_rgba_unmultiplied(255, 200, 50, 40)
                         } else if resp.hovered() {
                             BG_ROW_HOVER
@@ -1107,7 +1104,7 @@ impl App for LogViewerApp {
 fn main() -> eframe::Result<()> {
     let opts = NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_title("Log Viewer")
+            .with_title("XTR Log Viewer")
             .with_inner_size([1440.0, 900.0])
             .with_min_inner_size([800.0, 400.0])
             .with_drag_and_drop(true),
