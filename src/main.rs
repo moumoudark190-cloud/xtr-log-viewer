@@ -348,30 +348,28 @@ impl LogViewerApp {
             } else {
                 line.raw.to_lowercase()
             };
-            let matches = if self.whole_word {
+            let _matches = if self.whole_word {
                 // crude whole-word: check boundaries
                 let pattern = &term;
                 let mut start = 0;
-                while let Some(found) = haystack[start..].find(pattern) {
-                    let abs_start = start + found;
+                let mut found = false;
+                while let Some(found_pos) = haystack[start..].find(pattern) {
+                    let abs_start = start + found_pos;
                     let abs_end = abs_start + pattern.len();
                     let left_ok = abs_start == 0 || !haystack.chars().nth(abs_start - 1).unwrap().is_alphanumeric();
                     let right_ok = abs_end == haystack.len() || !haystack.chars().nth(abs_end).unwrap().is_alphanumeric();
                     if left_ok && right_ok {
-                        self.match_rows.push(idx);
-                        break; // only need to know if row matches, not multiple per row
+                        found = true;
+                        break;
                     }
                     start = abs_start + 1;
                 }
+                found
             } else {
-                if haystack.contains(&term) {
-                    self.match_rows.push(idx);
-                }
+                haystack.contains(&term)
             };
-            // In whole_word case we already pushed on first match; if we didn't push, we need to continue
-            if self.whole_word {
-                // already handled
-                continue;
+            if _matches {
+                self.match_rows.push(idx);
             }
         }
         self.total_matches = self.match_rows.len();
@@ -429,7 +427,6 @@ const BG_BASE:      Color32 = Color32::from_rgb(13, 17, 23);
 const BG_PANEL:     Color32 = Color32::from_rgb(20, 25, 32);
 const BG_ROW_HOVER: Color32 = Color32::from_rgba_premultiplied(255, 255, 255, 12);
 const BG_ROW_SEL:   Color32 = Color32::from_rgba_premultiplied(88, 166, 255, 48);
-const BG_MATCH_HL:  Color32 = Color32::from_rgba_unmultiplied(255, 200, 50, 40); // highlight for advanced search matches
 const COL_BORDER:   Color32 = Color32::from_rgb(42, 48, 58);
 const COL_TEXT:     Color32 = Color32::from_rgb(220, 225, 235);
 const COL_MUTED:    Color32 = Color32::from_rgb(150, 155, 165);
@@ -457,6 +454,7 @@ fn dark_visuals() -> egui::Visuals {
     v
 }
 
+// --- Improved button styles ---
 fn primary_button(text: &str) -> Button<'_> {
     Button::new(RichText::new(text).color(COL_TEXT).font(FontId::proportional(12.0)))
         .fill(Color32::from_rgb(40, 50, 65))
@@ -664,12 +662,12 @@ impl App for LogViewerApp {
                 .show(ctx, |ui| {
                     ui.heading("Find what:");
                     let term_changed = ui.text_edit_singleline(&mut self.advanced_term).changed();
-                    ui.horizontal(|ui| {
-                        ui.checkbox(&mut self.case_sensitive, "Match case");
-                        ui.checkbox(&mut self.whole_word, "Whole word");
-                        ui.checkbox(&mut self.highlight_all, "Highlight all");
-                    });
-                    if term_changed || self.case_sensitive.changed() || self.whole_word.changed() || self.highlight_all.changed() {
+
+                    let case_changed = ui.checkbox(&mut self.case_sensitive, "Match case").changed();
+                    let word_changed = ui.checkbox(&mut self.whole_word, "Whole word").changed();
+                    let highlight_changed = ui.checkbox(&mut self.highlight_all, "Highlight all").changed();
+
+                    if term_changed || case_changed || word_changed || highlight_changed {
                         self.recompute_advanced_matches();
                     }
                     ui.separator();
@@ -1021,7 +1019,8 @@ impl App for LogViewerApp {
                         let bg = if is_sel {
                             BG_ROW_SEL
                         } else if is_match {
-                            BG_MATCH_HL
+                            // Use inline color instead of const
+                            Color32::from_rgba_unmultiplied(255, 200, 50, 40)
                         } else if resp.hovered() {
                             BG_ROW_HOVER
                         } else if let Some(c) = line.level.row_bg() {
@@ -1108,7 +1107,7 @@ impl App for LogViewerApp {
 fn main() -> eframe::Result<()> {
     let opts = NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_title("XTR Log Viewer")
+            .with_title("Log Viewer")
             .with_inner_size([1440.0, 900.0])
             .with_min_inner_size([800.0, 400.0])
             .with_drag_and_drop(true),
