@@ -1,6 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use eframe::IconData;
+use egui::IconData;
 use eframe::{egui, App, Frame, NativeOptions};
 use egui::{
     Align, Align2, Color32, FontId, Key, Layout, Rounding, ScrollArea, Sense, Stroke, Vec2, RichText, Button, Window,
@@ -1198,11 +1198,10 @@ impl App for LogViewerApp {
 
 // ─── main ─────────────────────────────────────────────────────────────────────
 fn main() -> eframe::Result<()> {
-    // Load the icon for the window
+    // Load the icon for the window (optional)
     let icon = image::load_from_memory(include_bytes!("../assets/logo.ico"))
         .ok()
         .and_then(|img| {
-            // Convert to RGBA
             let rgba = img.to_rgba8();
             let (width, height) = rgba.dimensions();
             Some(IconData {
@@ -1212,17 +1211,24 @@ fn main() -> eframe::Result<()> {
             })
         });
 
+    let mut viewport = egui::ViewportBuilder::default()
+        .with_title("XTR Log Viewer")
+        .with_inner_size([1440.0, 900.0])
+        .with_min_inner_size([800.0, 400.0])
+        .with_drag_and_drop(true);
+
+    // Only set the icon if we successfully loaded it
+    if let Some(icon_data) = icon {
+        viewport = viewport.with_icon(icon_data);
+    }
+
     let opts = NativeOptions {
-        viewport: egui::ViewportBuilder::default()
-            .with_title("XTR Log Viewer")
-            .with_inner_size([1440.0, 900.0])
-            .with_min_inner_size([800.0, 400.0])
-            .with_drag_and_drop(true)
-            .with_icon(icon),
+        viewport,
         ..Default::default()
     };
+
     eframe::run_native(
-        "Log Viewer",
+        "XTR Log Viewer",
         opts,
         Box::new(|_cc| Box::new(LogViewerApp::default())),
     )
