@@ -547,15 +547,6 @@ impl App for LogViewerApp {
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 12.0;
-
-                    ui.label(
-                        RichText::new("▣  XTR LOG VIEWER")
-                            .color(COL_ACCENT)
-                            .font(FontId::monospace(13.0))
-                            .strong(),
-                    );
-                    // Removed the vertical separator that created a rectangle near the text
-
                     let search_id = egui::Id::new("search_box");
                     let search_style = egui::TextEdit::singleline(&mut self.search)
                         .id(search_id)
@@ -1034,8 +1025,6 @@ impl App for LogViewerApp {
                 if self.all_lines.is_empty() {
                     ui.centered_and_justified(|ui| {
                         ui.vertical_centered(|ui| {
-                            ui.add_space(60.0);
-                            ui.label(RichText::new("◫").size(52.0).color(Color32::from_gray(40)));
                             ui.add_space(14.0);
                             ui.label(RichText::new("Drop a log file here").size(22.0).color(COL_MUTED));
                             ui.add_space(8.0);
