@@ -413,15 +413,6 @@ fn level_toggle(ui: &mut egui::Ui, label: &str, count: usize, active: bool, colo
     ui.add(btn).clicked()
 }
 
-// ─── Minimap level colours (RGBA packed for speed) ────────────────────────────
-
-const MINIMAP_COLORS: [[u8; 4]; 5] = [
-    [255, 100,  85, 230],   // Error
-    [240, 185,  58, 200],   // Warning
-    [ 68, 200,  90, 160],   // Info
-    [ 75, 140, 215,  52],   // Debug
-    [ 88,  88,  92,  30],   // Trace
-];
 
 // ─── App::update ─────────────────────────────────────────────────────────────
 
@@ -675,55 +666,82 @@ impl App for LogViewerApp {
         // MINIMAP / COLOUR SCROLLBAR  (right side panel)
         // ════════════════════════════════════════════════════════════════════
         {
-            // snapshot scalars to avoid borrowing self inside the closure
-            let n_filt          = self.filtered.len();
-            let row_h           = self.row_height;
-            let scroll_off      = self.current_scroll_offset;
-            let viewport_h      = self.scroll_area_height;
-            let ml              = self.minimap_levels.clone();   // Vec<u8> — cheap enough
+            let n_filt     = self.filtered.len();
+            let row_h      = self.row_height;
+            let scroll_off = self.current_scroll_offset;
+            let viewport_h = self.scroll_area_height;
+            let ml         = self.minimap_levels.clone();
             let mut jump_to: Option<usize> = None;
 
-            egui::SidePanel::right("minimap_panel")
-                .exact_width(30.0)
-                .resizable(false)
-                .frame(egui::Frame::none().fill(Color32::from_rgb(9, 12, 17)))
-                .show(ctx, |ui| {
-                    let full = ui.max_rect();
+            // Solid colours — no alpha tricks, just clear distinct hues
+            // that show up on the near-black panel background.
+            const MM_ERR:   Color32 = Color32::from_rgb(210,  60,  50);
+            const MM_WRN:   Color32 = Color32::from_rgb(200, 150,  20);
+            const MM_INF:   Color32 = Color32::from_rgb( 45, 170,  70);
+            const MM_DBG:   Color32 = Color32::from_rgb( 35,  80, 145);
+            const MM_TRC:   Color32 = Color32::from_rgb( 38,  42,  50);
+            const MM_COLS: [Color32; 5] = [MM_ERR, MM_WRN, MM_INF, MM_DBG, MM_TRC];
 
-                    // left border line
-                    ui.painter().rect_filled(
-                        egui::Rect::from_min_size(full.min, Vec2::new(1.0, full.height())),
+            egui::SidePanel::right("minimap_panel")
+                .exact_width(28.0)
+                .resizable(false)
+                // Frame::none() so inner margin is zero — we control all geometry
+                .frame(egui::Frame::none().fill(Color32::from_rgb(10, 13, 18)))
+                .show(ctx, |ui| {
+
+                    // ── allocate_painter is the CORRECT API for custom painting
+                    // inside a panel: it sets clip_rect = allocated rect and
+                    // returns the actual pixel rect used. Never use ui.painter()
+                    // + a separately computed rect — they can disagree.
+                    let avail = ui.available_rect_before_wrap();
+                    let (resp, painter) = ui.allocate_painter(avail.size(), Sense::click_and_drag());
+                    let r = resp.rect;   // guaranteed to match the painter's clip rect
+
+                    // panel background
+                    painter.rect_filled(r, Rounding::ZERO, Color32::from_rgb(10, 13, 18));
+
+                    // left border
+                    painter.rect_filled(
+                        egui::Rect::from_min_max(r.left_top(), egui::pos2(r.min.x + 1.0, r.max.y)),
                         Rounding::ZERO, COL_BORDER,
                     );
 
                     if n_filt == 0 { return; }
 
-                    // draw area (inset 1px left for border)
-                    let area = egui::Rect::from_min_size(
-                        egui::pos2(full.min.x + 1.0, full.min.y),
-                        Vec2::new(full.width() - 1.0, full.height()),
-                    );
-                    let painter = ui.painter();
-                    let ah = area.height();
-                    let bar_x = area.min.x + 5.0;
-                    let bar_w = area.width() - 10.0;
+                    // usable strip (2 px margin left/right inside the border)
+                    let bx0 = r.min.x + 3.0;
+                    let bx1 = r.max.x - 2.0;
+                    let by0 = r.min.y;
+                    let ah  = r.height();
 
-                    // ── draw level colour bars (sampled to pixel height) ──
-                    for py in 0..(ah as usize) {
-                        let f0 = py as f32 / ah;
-                        let f1 = (py + 1) as f32 / ah;
-                        let i0 = (f0 * n_filt as f32) as usize;
-                        let i1 = ((f1 * n_filt as f32) as usize + 1).min(n_filt);
-                        // find worst (lowest index) level in bucket
-                        let worst = (i0..i1).map(|i| ml[i]).min().unwrap_or(4);
-                        let [r, g, b, a] = MINIMAP_COLORS[worst as usize];
+                    // ── level colour bars ─────────────────────────────────
+                    // Pixel-row sampling: for each output pixel row, find
+                    // which range of log rows maps to it, then pick the
+                    // most-severe level (lowest index) in that range.
+                    //
+                    // Key invariant: i1 >= i0 + 1  (always cover ≥ 1 row)
+                    let n = n_filt as f32;
+                    let pixels = ah as usize;
+                    for py in 0..pixels {
+                        // map pixel band [py, py+1) to row band [i0, i1)
+                        let i0 = ((py       as f32 * n / ah) as usize).min(n_filt - 1);
+                        let i1 = (((py + 1) as f32 * n / ah) as usize).min(n_filt - 1);
+                        // always include at least one row
+                        let i1 = i1.max(i0);
+
+                        // worst = minimum level index (Error=0 beats Warning=1, etc.)
+                        let worst = (i0..=i1)
+                            .map(|i| ml[i] as usize)
+                            .min()
+                            .unwrap_or(4);
+
+                        let y0 = by0 + py as f32;
+                        let y1 = y0 + 1.6; // slight overlap avoids gaps at fractional DPI
+
                         painter.rect_filled(
-                            egui::Rect::from_min_size(
-                                egui::pos2(bar_x, area.min.y + py as f32),
-                                Vec2::new(bar_w, 1.5),
-                            ),
+                            egui::Rect::from_min_max(egui::pos2(bx0, y0), egui::pos2(bx1, y1)),
                             Rounding::ZERO,
-                            Color32::from_rgba_unmultiplied(r, g, b, a),
+                            MM_COLS[worst],
                         );
                     }
 
@@ -732,24 +750,23 @@ impl App for LogViewerApp {
                     if total_h > 0.0 && viewport_h > 0.0 {
                         let vt = (scroll_off / total_h).clamp(0.0, 1.0);
                         let vb = ((scroll_off + viewport_h) / total_h).clamp(0.0, 1.0);
-                        let y0 = area.min.y + vt * ah;
-                        let y1 = (area.min.y + vb * ah).max(y0 + 4.0).min(area.max.y);
+                        let wy0 = (by0 + vt * ah).min(r.max.y - 4.0);
+                        let wy1 = (by0 + vb * ah).clamp(wy0 + 4.0, r.max.y);
                         painter.rect(
                             egui::Rect::from_min_max(
-                                egui::pos2(area.min.x + 2.0, y0),
-                                egui::pos2(area.max.x - 2.0, y1),
+                                egui::pos2(r.min.x + 1.5, wy0),
+                                egui::pos2(r.max.x - 1.0, wy1),
                             ),
                             Rounding::same(2.0),
-                            Color32::from_rgba_unmultiplied(180, 210, 255, 14),
-                            Stroke::new(1.0, Color32::from_rgba_unmultiplied(180, 210, 255, 115)),
+                            Color32::from_rgba_unmultiplied(200, 225, 255, 18),
+                            Stroke::new(1.0, Color32::from_rgba_unmultiplied(200, 225, 255, 130)),
                         );
                     }
 
                     // ── click / drag to jump ──────────────────────────────
-                    let resp = ui.allocate_rect(area, Sense::click_and_drag());
                     if resp.dragged() || resp.clicked() {
                         if let Some(pos) = resp.interact_pointer_pos() {
-                            let frac = ((pos.y - area.min.y) / ah).clamp(0.0, 1.0);
+                            let frac = ((pos.y - by0) / ah).clamp(0.0, 1.0);
                             let row  = (frac * n_filt as f32) as usize;
                             jump_to  = Some(row.min(n_filt.saturating_sub(1)));
                         }
