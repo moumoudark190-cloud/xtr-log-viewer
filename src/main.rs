@@ -716,33 +716,42 @@ impl App for LogViewerApp {
                     let ah  = r.height();
 
                     // ── level colour bars ─────────────────────────────────
-                    // Pixel-row sampling: for each output pixel row, find
-                    // which range of log rows maps to it, then pick the
-                    // most-severe level (lowest index) in that range.
+                    // For each output pixel row, map it to a band of log rows
+                    // and pick the MOST FREQUENT level in that band.
                     //
-                    // Key invariant: i1 >= i0 + 1  (always cover ≥ 1 row)
+                    // Using min() (most-severe) caused a single ERR among dozens
+                    // of DBG rows to paint the whole pixel red, making the
+                    // minimap look entirely red even on DBG-heavy sections.
+                    // Most-frequent gives an accurate colour representation;
+                    // ties are broken towards more severe (lower index).
                     let n = n_filt as f32;
                     let pixels = ah as usize;
                     for py in 0..pixels {
-                        // map pixel band [py, py+1) to row band [i0, i1)
                         let i0 = ((py       as f32 * n / ah) as usize).min(n_filt - 1);
                         let i1 = (((py + 1) as f32 * n / ah) as usize).min(n_filt - 1);
-                        // always include at least one row
-                        let i1 = i1.max(i0);
+                        let i1 = i1.max(i0); // always cover ≥ 1 row
 
-                        // worst = minimum level index (Error=0 beats Warning=1, etc.)
-                        let worst = (i0..=i1)
-                            .map(|i| ml[i] as usize)
-                            .min()
+                        // tally level counts in this band
+                        let mut counts = [0u16; 5];
+                        for i in i0..=i1 {
+                            counts[ml[i] as usize] += 1;
+                        }
+                        // most frequent; ties → lower index (more severe)
+                        let dominant = counts
+                            .iter()
+                            .enumerate()
+                            .max_by(|&(ia, &ca), &(ib, &cb)| {
+                                ca.cmp(&cb).then(ib.cmp(&ia))
+                            })
+                            .map(|(idx, _)| idx)
                             .unwrap_or(4);
 
                         let y0 = by0 + py as f32;
-                        let y1 = y0 + 1.6; // slight overlap avoids gaps at fractional DPI
-
+                        let y1 = y0 + 1.6;
                         painter.rect_filled(
                             egui::Rect::from_min_max(egui::pos2(bx0, y0), egui::pos2(bx1, y1)),
                             Rounding::ZERO,
-                            MM_COLS[worst],
+                            MM_COLS[dominant],
                         );
                     }
 
