@@ -217,7 +217,7 @@ struct LogViewerApp {
     current_scroll_offset:  f32,
     scroll_area_height:     f32,
     // Advanced search
-    advanced_window_id: egui::Id,
+    advanced_open: bool,
     advanced_term: String,
     case_sensitive: bool,
     whole_word: bool,
@@ -243,7 +243,7 @@ impl Default for LogViewerApp {
             scroll_to_offset: None,
             current_scroll_offset: 0.0,
             scroll_area_height: 0.0,
-            advanced_window_id: egui::Id::new("advanced_search_window"),
+            advanced_open: false,
             advanced_term: String::new(),
             case_sensitive: false,
             whole_word: false,
@@ -348,7 +348,7 @@ impl LogViewerApp {
             } else {
                 line.raw.to_lowercase()
             };
-            let _matches = if self.whole_word {
+            let matches = if self.whole_word {
                 let pattern = &term;
                 let mut start = 0;
                 let mut found = false;
@@ -367,7 +367,7 @@ impl LogViewerApp {
             } else {
                 haystack.contains(&term)
             };
-            if _matches {
+            if matches {
                 self.match_rows.push(idx);
             }
         }
@@ -571,9 +571,9 @@ impl App for LogViewerApp {
                         ctx.memory_mut(|m| m.request_focus(search_id));
                     }
 
-                    // Advanced search button toggles the window via memory
+                    // Advanced search button toggles the window open flag
                     if ui.add(icon_button("🔧")).on_hover_text("Advanced search (Notepad++ style)").clicked() {
-                        ctx.memory_mut(|mem| mem.toggle_window_open(self.advanced_window_id));
+                        self.advanced_open = !self.advanced_open;
                     }
 
                     // Module combo
@@ -651,10 +651,8 @@ impl App for LogViewerApp {
         // ════════════════════════════════════════════════════════════════════
         // ADVANCED SEARCH WINDOW (Notepad++ style)
         // ════════════════════════════════════════════════════════════════════
-        let window_open = ctx.memory(|mem| mem.is_window_open(self.advanced_window_id));
-        if window_open {
+        if self.advanced_open {
             Window::new("Advanced Search")
-                .id(self.advanced_window_id)
                 .collapsible(false)
                 .resizable(false)
                 .default_size([400.0, 180.0])
@@ -689,6 +687,10 @@ impl App for LogViewerApp {
                     });
                     if !self.advanced_term.is_empty() && self.total_matches == 0 && self.highlight_all {
                         ui.colored_label(Color32::from_rgb(255, 100, 100), "No matches found.");
+                    }
+                    ui.separator();
+                    if ui.button("Close").clicked() {
+                        self.advanced_open = false;
                     }
                 });
         }
