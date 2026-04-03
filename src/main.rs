@@ -673,17 +673,18 @@ impl App for LogViewerApp {
             let ml         = self.minimap_levels.clone();
             let mut jump_to: Option<usize> = None;
 
-            // Solid colours — no alpha tricks, just clear distinct hues
-            // that show up on the near-black panel background.
-            const MM_ERR:   Color32 = Color32::from_rgb(210,  60,  50);
-            const MM_WRN:   Color32 = Color32::from_rgb(200, 150,  20);
-            const MM_INF:   Color32 = Color32::from_rgb( 45, 170,  70);
-            const MM_DBG:   Color32 = Color32::from_rgb( 35,  80, 145);
-            const MM_TRC:   Color32 = Color32::from_rgb( 38,  42,  50);
+            // Mirror Level::color() exactly — same hues the row badges use.
+            // MM_DBG was previously rgb(35,80,145): nearly invisible on the
+            // dark panel.  Now matches badge blue rgb(95,165,245).
+            const MM_ERR:   Color32 = Color32::from_rgb(245,  95,  85);  // red
+            const MM_WRN:   Color32 = Color32::from_rgb(235, 180,  55);  // amber
+            const MM_INF:   Color32 = Color32::from_rgb( 70, 200,  95);  // green
+            const MM_DBG:   Color32 = Color32::from_rgb( 95, 165, 245);  // blue
+            const MM_TRC:   Color32 = Color32::from_rgb(105, 110, 122);  // gray
             const MM_COLS: [Color32; 5] = [MM_ERR, MM_WRN, MM_INF, MM_DBG, MM_TRC];
 
             egui::SidePanel::right("minimap_panel")
-                .exact_width(28.0)
+                .exact_width(34.0)
                 .resizable(false)
                 // Frame::none() so inner margin is zero — we control all geometry
                 .frame(egui::Frame::none().fill(Color32::from_rgb(10, 13, 18)))
