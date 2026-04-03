@@ -2,7 +2,7 @@
 
 use eframe::{egui, App, Frame, NativeOptions};
 use egui::{
-    Align, Align2, Color32, FontId, Key, Layout, Rounding, ScrollArea, Sense, Stroke, Vec2, RichText, Button,
+    Align, Align2, Color32, FontId, Key, Layout, Rounding, ScrollArea, Sense, Stroke, Vec2, RichText, Button, Window,
 };
 use std::path::PathBuf;
 
@@ -210,12 +210,21 @@ struct LogViewerApp {
     detail_open: bool,
     status:      String,
     drag_hover:  bool,
-    // minimap cache (level per filtered row, rebuilt on filter change)
-    minimap_levels: Vec<u8>,   // level index 0-4
+    // minimap cache
+    minimap_levels: Vec<u8>,
     // scroll sync
-    scroll_to_offset:       Option<f32>, // target scroll offset in pixels
+    scroll_to_offset:       Option<f32>,
     current_scroll_offset:  f32,
     scroll_area_height:     f32,
+    // Advanced search
+    advanced_open: bool,
+    advanced_term: String,
+    case_sensitive: bool,
+    whole_word: bool,
+    highlight_all: bool,
+    match_rows: Vec<usize>,      // indices in filtered list where term matches
+    current_match: usize,        // index into match_rows (0..len-1)
+    total_matches: usize,
 }
 
 impl Default for LogViewerApp {
@@ -234,6 +243,14 @@ impl Default for LogViewerApp {
             scroll_to_offset: None,
             current_scroll_offset: 0.0,
             scroll_area_height: 0.0,
+            advanced_open: false,
+            advanced_term: String::new(),
+            case_sensitive: false,
+            whole_word: false,
+            highlight_all: false,
+            match_rows: vec![],
+            current_match: 0,
+            total_matches: 0,
         }
     }
 }
@@ -250,7 +267,6 @@ impl LogViewerApp {
             })
             .collect();
 
-        // compute delta times
         let mut prev_ms: Option<u64> = None;
         for line in &mut self.all_lines {
             line.delta_ms = match (prev_ms, line.ts_ms) {
@@ -271,9 +287,9 @@ impl LogViewerApp {
         self.selected = None;
         self.detail_open = false;
         self.current_scroll_offset = 0.0;
-        let n = self.all_lines.len();
-        self.status = format!("Loaded {} lines", n);
+        self.status = format!("Loaded {} lines", self.all_lines.len());
         self.apply_filters();
+        self.recompute_advanced_matches();
     }
 
     fn load_file(&mut self, path: &PathBuf) {
@@ -303,10 +319,65 @@ impl LogViewerApp {
             .map(|(i, _)| i)
             .collect();
 
-        // rebuild minimap cache
         self.minimap_levels = self.filtered.iter()
             .map(|&i| self.all_lines[i].level.index() as u8)
             .collect();
+
+        self.recompute_advanced_matches();
+    }
+
+    fn recompute_advanced_matches(&mut self) {
+        self.match_rows.clear();
+        self.total_matches = 0;
+        self.current_match = 0;
+
+        if self.advanced_term.is_empty() || !self.highlight_all {
+            return;
+        }
+
+        let term = if self.case_sensitive {
+            self.advanced_term.clone()
+        } else {
+            self.advanced_term.to_lowercase()
+        };
+
+        for (idx, &line_idx) in self.filtered.iter().enumerate() {
+            let line = &self.all_lines[line_idx];
+            let haystack = if self.case_sensitive {
+                line.raw.clone()
+            } else {
+                line.raw.to_lowercase()
+            };
+            let matches = if self.whole_word {
+                // crude whole-word: check boundaries
+                let pattern = &term;
+                let mut start = 0;
+                while let Some(found) = haystack[start..].find(pattern) {
+                    let abs_start = start + found;
+                    let abs_end = abs_start + pattern.len();
+                    let left_ok = abs_start == 0 || !haystack.chars().nth(abs_start - 1).unwrap().is_alphanumeric();
+                    let right_ok = abs_end == haystack.len() || !haystack.chars().nth(abs_end).unwrap().is_alphanumeric();
+                    if left_ok && right_ok {
+                        self.match_rows.push(idx);
+                        break; // only need to know if row matches, not multiple per row
+                    }
+                    start = abs_start + 1;
+                }
+            } else {
+                if haystack.contains(&term) {
+                    self.match_rows.push(idx);
+                }
+            };
+            // In whole_word case we already pushed on first match; if we didn't push, we need to continue
+            if self.whole_word {
+                // already handled
+                continue;
+            }
+        }
+        self.total_matches = self.match_rows.len();
+        if self.total_matches > 0 {
+            self.current_match = 0;
+        }
     }
 
     fn open_file_dialog(&mut self) {
@@ -318,6 +389,38 @@ impl LogViewerApp {
             self.load_file(&path);
         }
     }
+
+    fn next_match(&mut self) {
+        if self.total_matches == 0 { return; }
+        self.current_match = (self.current_match + 1) % self.total_matches;
+        let target_row = self.match_rows[self.current_match];
+        let offset = target_row as f32 * self.row_height;
+        self.scroll_to_offset = Some(offset);
+        // also select the row
+        self.selected = Some(target_row);
+        self.detail_open = true;
+    }
+
+    fn prev_match(&mut self) {
+        if self.total_matches == 0 { return; }
+        self.current_match = if self.current_match == 0 {
+            self.total_matches - 1
+        } else {
+            self.current_match - 1
+        };
+        let target_row = self.match_rows[self.current_match];
+        let offset = target_row as f32 * self.row_height;
+        self.scroll_to_offset = Some(offset);
+        self.selected = Some(target_row);
+        self.detail_open = true;
+    }
+
+    fn is_match_row(&self, row_idx: usize) -> bool {
+        if !self.highlight_all || self.advanced_term.is_empty() {
+            return false;
+        }
+        self.match_rows.binary_search(&row_idx).is_ok()
+    }
 }
 
 // ─── UI constants ─────────────────────────────────────────────────────────────
@@ -326,6 +429,7 @@ const BG_BASE:      Color32 = Color32::from_rgb(13, 17, 23);
 const BG_PANEL:     Color32 = Color32::from_rgb(20, 25, 32);
 const BG_ROW_HOVER: Color32 = Color32::from_rgba_premultiplied(255, 255, 255, 12);
 const BG_ROW_SEL:   Color32 = Color32::from_rgba_premultiplied(88, 166, 255, 48);
+const BG_MATCH_HL:  Color32 = Color32::from_rgba_unmultiplied(255, 200, 50, 40); // highlight for advanced search matches
 const COL_BORDER:   Color32 = Color32::from_rgb(42, 48, 58);
 const COL_TEXT:     Color32 = Color32::from_rgb(220, 225, 235);
 const COL_MUTED:    Color32 = Color32::from_rgb(150, 155, 165);
@@ -353,7 +457,6 @@ fn dark_visuals() -> egui::Visuals {
     v
 }
 
-// --- Improved button styles ---
 fn primary_button(text: &str) -> Button<'_> {
     Button::new(RichText::new(text).color(COL_TEXT).font(FontId::proportional(12.0)))
         .fill(Color32::from_rgb(40, 50, 65))
@@ -369,6 +472,14 @@ fn icon_button(icon: &str) -> Button<'_> {
         .rounding(Rounding::same(6.0))
         .min_size(Vec2::new(32.0, 28.0))
         .sense(Sense::click())
+}
+
+fn close_button() -> Button<'static> {
+    Button::new(RichText::new("✕ Close").color(Color32::from_rgb(255, 140, 130)).font(FontId::proportional(12.0)))
+        .fill(Color32::from_rgb(45, 30, 35))
+        .stroke(Stroke::new(0.5, Color32::from_rgb(200, 80, 70)))
+        .rounding(Rounding::same(6.0))
+        .min_size(Vec2::new(0.0, 28.0))
 }
 
 fn level_toggle(ui: &mut egui::Ui, label: &str, count: usize, active: bool, color: Color32) -> bool {
@@ -404,7 +515,7 @@ impl App for LogViewerApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut Frame) {
         ctx.set_visuals(dark_visuals());
 
-        // ── drag & drop ──────────────────────────────────────────────────────
+        // drag & drop
         ctx.input(|i| {
             self.drag_hover = !i.raw.hovered_files.is_empty();
             for d in &i.raw.dropped_files {
@@ -415,7 +526,7 @@ impl App for LogViewerApp {
             }
         });
 
-        // ── keyboard ─────────────────────────────────────────────────────────
+        // keyboard
         let open_dialog = ctx.input(|i| i.key_pressed(Key::O) && i.modifiers.ctrl);
         if open_dialog { self.open_file_dialog(); }
 
@@ -447,7 +558,7 @@ impl App for LogViewerApp {
                     );
                     ui.add(egui::Separator::default().vertical().spacing(8.0));
 
-                    // Search box – improved styling
+                    // Simple search box
                     let search_id = egui::Id::new("search_box");
                     let search_style = egui::TextEdit::singleline(&mut self.search)
                         .id(search_id)
@@ -462,6 +573,11 @@ impl App for LogViewerApp {
                     }
                     if ctx.input(|i| i.key_pressed(Key::F) && (i.modifiers.ctrl || i.modifiers.command)) {
                         ctx.memory_mut(|m| m.request_focus(search_id));
+                    }
+
+                    // Advanced search button
+                    if ui.add(icon_button("🔧")).on_hover_text("Advanced search (Notepad++ style)").clicked() {
+                        self.advanced_open = !self.advanced_open;
                     }
 
                     // Module combo
@@ -537,6 +653,50 @@ impl App for LogViewerApp {
             });
 
         // ════════════════════════════════════════════════════════════════════
+        // ADVANCED SEARCH WINDOW (Notepad++ style)
+        // ════════════════════════════════════════════════════════════════════
+        if self.advanced_open {
+            Window::new("Advanced Search")
+                .collapsible(false)
+                .resizable(false)
+                .default_size([400.0, 180.0])
+                .open(&mut self.advanced_open)
+                .show(ctx, |ui| {
+                    ui.heading("Find what:");
+                    let term_changed = ui.text_edit_singleline(&mut self.advanced_term).changed();
+                    ui.horizontal(|ui| {
+                        ui.checkbox(&mut self.case_sensitive, "Match case");
+                        ui.checkbox(&mut self.whole_word, "Whole word");
+                        ui.checkbox(&mut self.highlight_all, "Highlight all");
+                    });
+                    if term_changed || self.case_sensitive.changed() || self.whole_word.changed() || self.highlight_all.changed() {
+                        self.recompute_advanced_matches();
+                    }
+                    ui.separator();
+                    ui.horizontal(|ui| {
+                        if ui.button("Count").clicked() {
+                            self.recompute_advanced_matches();
+                            self.status = format!("Found {} matches", self.total_matches);
+                        }
+                        if ui.button("Find Next").clicked() {
+                            self.next_match();
+                        }
+                        if ui.button("Find Previous").clicked() {
+                            self.prev_match();
+                        }
+                        ui.add_space(20.0);
+                        ui.label(RichText::new(format!("Matches: {}", self.total_matches)).color(COL_ACCENT));
+                        if self.total_matches > 0 {
+                            ui.label(format!(" (match {} of {})", self.current_match + 1, self.total_matches));
+                        }
+                    });
+                    if !self.advanced_term.is_empty() && self.total_matches == 0 && self.highlight_all {
+                        ui.colored_label(Color32::from_rgb(255, 100, 100), "No matches found.");
+                    }
+                });
+        }
+
+        // ════════════════════════════════════════════════════════════════════
         // STATUS BAR
         // ════════════════════════════════════════════════════════════════════
         egui::TopBottomPanel::bottom("statusbar")
@@ -566,7 +726,7 @@ impl App for LogViewerApp {
             });
 
         // ════════════════════════════════════════════════════════════════════
-        // DETAIL PANEL (improved buttons)
+        // DETAIL PANEL
         // ════════════════════════════════════════════════════════════════════
         if self.detail_open {
             let sel: Option<LogLine> = self.selected
@@ -594,7 +754,9 @@ impl App for LogViewerApp {
                             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                                 ui.spacing_mut().item_spacing.x = 8.0;
                                 let mut close = false;
-                                if ui.add(icon_button("✕")).on_hover_text("Close").clicked() { close = true; }
+                                if ui.add(close_button()).on_hover_text("Close detail panel").clicked() {
+                                    close = true;
+                                }
                                 if ui.add(icon_button("📋")).on_hover_text("Copy raw line").clicked() {
                                     ui.output_mut(|o| o.copied_text = line.raw.clone());
                                 }
@@ -605,7 +767,6 @@ impl App for LogViewerApp {
                         ui.add(egui::Separator::default().horizontal().spacing(3.0));
                         ui.add_space(4.0);
 
-                        // meta grid (4 columns)
                         egui::Grid::new("detail_grid")
                             .num_columns(4)
                             .spacing([20.0, 5.0])
@@ -645,7 +806,7 @@ impl App for LogViewerApp {
         }
 
         // ════════════════════════════════════════════════════════════════════
-        // MINIMAP / COLOUR SCROLLBAR  (right side panel)
+        // MINIMAP
         // ════════════════════════════════════════════════════════════════════
         {
             let n_filt     = self.filtered.len();
@@ -759,7 +920,7 @@ impl App for LogViewerApp {
         }
 
         // ════════════════════════════════════════════════════════════════════
-        // MAIN LOG AREA (improved column colors)
+        // MAIN LOG AREA
         // ════════════════════════════════════════════════════════════════════
         egui::CentralPanel::default()
             .frame(egui::Frame::none().fill(BG_BASE))
@@ -806,7 +967,7 @@ impl App for LogViewerApp {
                     return;
                 }
 
-                // column headers – brighter text
+                // column headers
                 {
                     let hdr_h = 18.0;
                     let (hdr_rect, _) = ui.allocate_exact_size(
@@ -816,7 +977,7 @@ impl App for LogViewerApp {
                     let y = hdr_rect.center().y;
                     let x0 = hdr_rect.min.x;
                     let fid = FontId::monospace(9.5);
-                    let col = Color32::from_rgb(140, 150, 170); // brighter header
+                    let col = Color32::from_rgb(140, 150, 170);
 
                     p.text(egui::pos2(x0 + COL_LN - 6.0, y), Align2::RIGHT_CENTER, "#",       fid.clone(), col);
                     p.text(egui::pos2(x0 + COL_LN,        y), Align2::LEFT_CENTER,  "TIME",    fid.clone(), col);
@@ -836,7 +997,7 @@ impl App for LogViewerApp {
                 let mut sa = ScrollArea::vertical()
                     .id_source("log_scroll")
                     .auto_shrink(false)
-                    .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden);
+                    .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::VisibleWhenNeeded);
 
                 if let Some(off) = self.scroll_to_offset.take() {
                     sa = sa.scroll_offset(Vec2::new(0.0, off));
@@ -849,14 +1010,18 @@ impl App for LogViewerApp {
                         let line_idx = match self.filtered.get(row_idx) { Some(&i) => i, None => continue };
                         let line     = match self.all_lines.get(line_idx) { Some(l) => l, None => continue };
                         let is_sel   = self.selected == Some(row_idx);
+                        let is_match = self.is_match_row(row_idx);
 
                         let (row_rect, resp) = ui.allocate_exact_size(
                             Vec2::new(ui.available_width(), row_h), Sense::click(),
                         );
                         if !ui.is_rect_visible(row_rect) { continue; }
 
+                        // background color priority: selection > match highlight > hover > row_bg
                         let bg = if is_sel {
                             BG_ROW_SEL
+                        } else if is_match {
+                            BG_MATCH_HL
                         } else if resp.hovered() {
                             BG_ROW_HOVER
                         } else if let Some(c) = line.level.row_bg() {
@@ -882,23 +1047,20 @@ impl App for LogViewerApp {
                         let fxs  = FontId::monospace((font_sz - 2.0).max(7.5));
                         let mut x = row_rect.min.x;
 
-                        // line number
                         p.text(egui::pos2(x + COL_LN - 6.0, y), Align2::RIGHT_CENTER,
                             line.num.to_string(), fxs.clone(), COL_FAINT);
                         x += COL_LN;
 
-                        // timestamp – brighter cyan/gray
                         let ts = if line.timestamp.len() > 12 { &line.timestamp[..12] } else { &line.timestamp };
                         p.text(egui::pos2(x, y), Align2::LEFT_CENTER, ts, fsm.clone(),
-                            Color32::from_rgb(160, 210, 255)); // brighter blue-ish
+                            Color32::from_rgb(160, 210, 255));
                         x += COL_TS;
 
-                        // delta time – amber if large
                         if let Some(dms) = line.delta_ms {
                             if dms > 0 {
                                 let s = format_delta(dms);
                                 let dc = if dms >= 1000 {
-                                    Color32::from_rgb(255, 200, 80) // bright amber
+                                    Color32::from_rgb(255, 200, 80)
                                 } else if dms >= 100 {
                                     Color32::from_rgb(180, 180, 200)
                                 } else {
@@ -909,18 +1071,15 @@ impl App for LogViewerApp {
                         }
                         x += COL_DT;
 
-                        // level – already bright by design
                         p.text(egui::pos2(x, y), Align2::LEFT_CENTER,
                             line.level.label(), fsm.clone(), line.level.color());
                         x += COL_LV;
 
-                        // module – light gray
                         let mod_disp = if line.module.len() > 26 { &line.module[..26] } else { &line.module };
                         p.text(egui::pos2(x, y), Align2::LEFT_CENTER, mod_disp, fsm.clone(),
                             Color32::from_rgb(180, 185, 200));
                         x += COL_MOD;
 
-                        // message – white for errors/warnings, light gray otherwise
                         let max_chars = ((row_rect.max.x - x - 8.0) / (font_sz * 0.6)) as usize;
                         let msg = &line.message;
                         let msg_disp = if msg.len() > max_chars.max(40) { &msg[..max_chars.max(40)] } else { msg.as_str() };
