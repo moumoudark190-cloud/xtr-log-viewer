@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use eframe::IconData;
 use eframe::{egui, App, Frame, NativeOptions};
 use egui::{
     Align, Align2, Color32, FontId, Key, Layout, Rounding, ScrollArea, Sense, Stroke, Vec2, RichText, Button, Window,
@@ -1200,7 +1201,16 @@ fn main() -> eframe::Result<()> {
     // Load the icon for the window
     let icon = image::load_from_memory(include_bytes!("../assets/logo.ico"))
         .ok()
-        .and_then(|img| eframe::icon_data::from_image(img));
+        .and_then(|img| {
+            // Convert to RGBA
+            let rgba = img.to_rgba8();
+            let (width, height) = rgba.dimensions();
+            Some(IconData {
+                rgba: rgba.into_raw(),
+                width,
+                height,
+            })
+        });
 
     let opts = NativeOptions {
         viewport: egui::ViewportBuilder::default()
@@ -1212,7 +1222,7 @@ fn main() -> eframe::Result<()> {
         ..Default::default()
     };
     eframe::run_native(
-        "XTR Log Viewer",
+        "Log Viewer",
         opts,
         Box::new(|_cc| Box::new(LogViewerApp::default())),
     )
