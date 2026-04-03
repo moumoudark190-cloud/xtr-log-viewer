@@ -548,15 +548,14 @@ impl App for LogViewerApp {
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 12.0;
 
-                    // Search bar with visible frame
+                    // Search bar with visible frame (removed .stroke())
                     let search_id = egui::Id::new("search_box");
                     let search_style = egui::TextEdit::singleline(&mut self.search)
                         .id(search_id)
                         .hint_text(RichText::new("🔍  Search (Ctrl+F)").color(COL_FAINT))
                         .desired_width(260.0)
                         .font(FontId::monospace(12.0))
-                        .frame(true)   // enables frame background and border
-                        .stroke(Stroke::new(1.0, COL_BORDER));
+                        .frame(true);   // enables frame background and border
                     let re = ui.add(search_style);
                     if re.changed() {
                         self.search_lc = self.search.to_lowercase();
@@ -1197,14 +1196,19 @@ impl App for LogViewerApp {
 }
 
 // ─── main ─────────────────────────────────────────────────────────────────────
-
 fn main() -> eframe::Result<()> {
+    // Load the icon for the window
+    let icon = image::load_from_memory(include_bytes!("../assets/logo.ico"))
+        .ok()
+        .and_then(|img| eframe::icon_data::from_image(img));
+
     let opts = NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("XTR Log Viewer")
             .with_inner_size([1440.0, 900.0])
             .with_min_inner_size([800.0, 400.0])
-            .with_drag_and_drop(true),
+            .with_drag_and_drop(true)
+            .with_icon(icon),
         ..Default::default()
     };
     eframe::run_native(
