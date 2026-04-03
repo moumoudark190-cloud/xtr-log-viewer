@@ -749,3 +749,215 @@ impl App for LogViewerApp {
                                 target_offset = 0.0;
                             }
                             jump_to_offset = Some(target_offset);
+                        }
+                    }
+                });
+
+            if let Some(offset) = jump_to_offset {
+                self.scroll_to_offset = Some(offset);
+            }
+        }
+
+        // ════════════════════════════════════════════════════════════════════
+        // MAIN LOG AREA (improved column colors)
+        // ════════════════════════════════════════════════════════════════════
+        egui::CentralPanel::default()
+            .frame(egui::Frame::none().fill(BG_BASE))
+            .show(ctx, |ui| {
+
+                if self.all_lines.is_empty() {
+                    let outer = ui.available_rect_before_wrap();
+                    if self.drag_hover {
+                        ui.painter().rect(
+                            outer.shrink(4.0),
+                            Rounding::same(8.0),
+                            Color32::from_rgba_unmultiplied(88, 166, 255, 22),
+                            Stroke::new(2.0, COL_ACCENT),
+                        );
+                    }
+                    ui.centered_and_justified(|ui| {
+                        ui.vertical_centered(|ui| {
+                            ui.add_space(60.0);
+                            ui.label(RichText::new("◫").size(52.0).color(Color32::from_gray(40)));
+                            ui.add_space(14.0);
+                            ui.label(RichText::new("Drop a log file here").size(22.0).color(COL_MUTED));
+                            ui.add_space(8.0);
+                            ui.label(RichText::new(
+                                "Supports XTR · MTF · CARIAD · TLS-Attacker · DiagnosticToolBox formats",
+                            ).size(12.0).color(COL_FAINT));
+                            ui.add_space(22.0);
+                            if ui.add(
+                                Button::new(RichText::new("  Open file  (Ctrl+O)  ").size(13.0).color(BG_BASE))
+                                    .fill(COL_ACCENT).stroke(Stroke::NONE).rounding(Rounding::same(6.0))
+                            ).clicked() { self.open_file_dialog(); }
+                            ui.add_space(12.0);
+                            ui.label(RichText::new(
+                                "Ctrl+O  open  |  Ctrl+F  search  |  Esc  clear/deselect  |  Click row  →  detail"
+                            ).size(11.0).color(COL_FAINT));
+                        });
+                    });
+                    return;
+                }
+
+                if self.filtered.is_empty() {
+                    ui.centered_and_justified(|ui| {
+                        ui.label(RichText::new("No lines match your filters").size(16.0).color(COL_FAINT));
+                    });
+                    return;
+                }
+
+                // column headers – brighter text
+                {
+                    let hdr_h = 18.0;
+                    let (hdr_rect, _) = ui.allocate_exact_size(
+                        Vec2::new(ui.available_width(), hdr_h), Sense::hover(),
+                    );
+                    let p = ui.painter();
+                    let y = hdr_rect.center().y;
+                    let x0 = hdr_rect.min.x;
+                    let fid = FontId::monospace(9.5);
+                    let col = Color32::from_rgb(140, 150, 170); // brighter header
+
+                    p.text(egui::pos2(x0 + COL_LN - 6.0, y), Align2::RIGHT_CENTER, "#",       fid.clone(), col);
+                    p.text(egui::pos2(x0 + COL_LN,        y), Align2::LEFT_CENTER,  "TIME",    fid.clone(), col);
+                    p.text(egui::pos2(x0 + COL_LN + COL_TS, y), Align2::LEFT_CENTER, "Δ TIME", fid.clone(), col);
+                    p.text(egui::pos2(x0 + COL_LN + COL_TS + COL_DT, y), Align2::LEFT_CENTER, "LVL",     fid.clone(), col);
+                    p.text(egui::pos2(x0 + COL_LN + COL_TS + COL_DT + COL_LV, y), Align2::LEFT_CENTER, "MODULE",  fid.clone(), col);
+                    p.text(egui::pos2(x0 + COL_LN + COL_TS + COL_DT + COL_LV + COL_MOD, y), Align2::LEFT_CENTER, "MESSAGE", fid.clone(), col);
+                }
+                ui.add(egui::Separator::default().horizontal().spacing(1.0));
+
+                let row_h   = self.row_height;
+                let font_sz = self.font_size;
+                let n       = self.filtered.len();
+
+                let visible_height = ui.available_height();
+
+                let mut sa = ScrollArea::vertical()
+                    .id_source("log_scroll")
+                    .auto_shrink(false)
+                    .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden);
+
+                if let Some(off) = self.scroll_to_offset.take() {
+                    sa = sa.scroll_offset(Vec2::new(0.0, off));
+                }
+
+                let out = sa.show_rows(ui, row_h, n, |ui, row_range| {
+                    ui.spacing_mut().item_spacing = Vec2::ZERO;
+
+                    for row_idx in row_range {
+                        let line_idx = match self.filtered.get(row_idx) { Some(&i) => i, None => continue };
+                        let line     = match self.all_lines.get(line_idx) { Some(l) => l, None => continue };
+                        let is_sel   = self.selected == Some(row_idx);
+
+                        let (row_rect, resp) = ui.allocate_exact_size(
+                            Vec2::new(ui.available_width(), row_h), Sense::click(),
+                        );
+                        if !ui.is_rect_visible(row_rect) { continue; }
+
+                        let bg = if is_sel {
+                            BG_ROW_SEL
+                        } else if resp.hovered() {
+                            BG_ROW_HOVER
+                        } else if let Some(c) = line.level.row_bg() {
+                            c
+                        } else {
+                            Color32::TRANSPARENT
+                        };
+                        if bg != Color32::TRANSPARENT {
+                            ui.painter().rect_filled(row_rect, Rounding::ZERO, bg);
+                        }
+
+                        if matches!(line.level, Level::Error | Level::Warning) {
+                            ui.painter().rect_filled(
+                                egui::Rect::from_min_size(row_rect.min, Vec2::new(2.5, row_h)),
+                                Rounding::ZERO, line.level.color(),
+                            );
+                        }
+
+                        let p    = ui.painter();
+                        let y    = row_rect.center().y;
+                        let fid  = FontId::monospace(font_sz);
+                        let fsm  = FontId::monospace((font_sz - 1.0).max(8.0));
+                        let fxs  = FontId::monospace((font_sz - 2.0).max(7.5));
+                        let mut x = row_rect.min.x;
+
+                        // line number
+                        p.text(egui::pos2(x + COL_LN - 6.0, y), Align2::RIGHT_CENTER,
+                            line.num.to_string(), fxs.clone(), COL_FAINT);
+                        x += COL_LN;
+
+                        // timestamp – brighter cyan/gray
+                        let ts = if line.timestamp.len() > 12 { &line.timestamp[..12] } else { &line.timestamp };
+                        p.text(egui::pos2(x, y), Align2::LEFT_CENTER, ts, fsm.clone(),
+                            Color32::from_rgb(160, 210, 255)); // brighter blue-ish
+                        x += COL_TS;
+
+                        // delta time – amber if large
+                        if let Some(dms) = line.delta_ms {
+                            if dms > 0 {
+                                let s = format_delta(dms);
+                                let dc = if dms >= 1000 {
+                                    Color32::from_rgb(255, 200, 80) // bright amber
+                                } else if dms >= 100 {
+                                    Color32::from_rgb(180, 180, 200)
+                                } else {
+                                    Color32::from_rgb(120, 130, 150)
+                                };
+                                p.text(egui::pos2(x, y), Align2::LEFT_CENTER, s, fxs.clone(), dc);
+                            }
+                        }
+                        x += COL_DT;
+
+                        // level – already bright by design
+                        p.text(egui::pos2(x, y), Align2::LEFT_CENTER,
+                            line.level.label(), fsm.clone(), line.level.color());
+                        x += COL_LV;
+
+                        // module – light gray
+                        let mod_disp = if line.module.len() > 26 { &line.module[..26] } else { &line.module };
+                        p.text(egui::pos2(x, y), Align2::LEFT_CENTER, mod_disp, fsm.clone(),
+                            Color32::from_rgb(180, 185, 200));
+                        x += COL_MOD;
+
+                        // message – white for errors/warnings, light gray otherwise
+                        let max_chars = ((row_rect.max.x - x - 8.0) / (font_sz * 0.6)) as usize;
+                        let msg = &line.message;
+                        let msg_disp = if msg.len() > max_chars.max(40) { &msg[..max_chars.max(40)] } else { msg.as_str() };
+                        let msg_col = match line.level {
+                            Level::Error   => Color32::from_rgb(255, 180, 170),
+                            Level::Warning => Color32::from_rgb(255, 220, 150),
+                            _              => Color32::from_rgb(210, 215, 225),
+                        };
+                        p.text(egui::pos2(x, y), Align2::LEFT_CENTER, msg_disp, fid.clone(), msg_col);
+
+                        if resp.clicked() {
+                            if is_sel { self.detail_open = !self.detail_open; }
+                            else { self.selected = Some(row_idx); self.detail_open = true; }
+                        }
+                    }
+                });
+
+                self.scroll_area_height = visible_height;
+                self.current_scroll_offset = out.state.offset.y;
+            });
+    }
+}
+
+// ─── main ─────────────────────────────────────────────────────────────────────
+
+fn main() -> eframe::Result<()> {
+    let opts = NativeOptions {
+        viewport: egui::ViewportBuilder::default()
+            .with_title("XTR Log Viewer")
+            .with_inner_size([1440.0, 900.0])
+            .with_min_inner_size([800.0, 400.0])
+            .with_drag_and_drop(true),
+        ..Default::default()
+    };
+    eframe::run_native(
+        "XTR Log Viewer",
+        opts,
+        Box::new(|_cc| Box::new(LogViewerApp::default())),
+    )
+}
