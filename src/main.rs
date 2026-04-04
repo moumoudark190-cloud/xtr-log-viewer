@@ -1,9 +1,9 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use egui::IconData;
 use eframe::{egui, App, Frame, NativeOptions};
 use egui::{
-    Align, Align2, Color32, FontId, Key, Layout, Rounding, ScrollArea, Sense, Stroke, Vec2, RichText, Button, Window,
+    Align, Align2, Color32, FontId, Key, Layout, Rounding, ScrollArea, Sense, Stroke, Vec2,
+    RichText, Button,
 };
 use std::path::PathBuf;
 
@@ -21,21 +21,21 @@ enum Level {
 impl Level {
     fn from_str(s: &str) -> Self {
         match s.trim().to_uppercase().as_str() {
-            "ERR" | "ERROR" => Self::Error,
-            "WRN" | "WARN" | "WARNING" => Self::Warning,
-            "INF" | "INFO" => Self::Info,
-            "DBG" | "DEBUG" => Self::Debug,
-            "TRC" | "TRACE" | "VERBOSE" => Self::Trace,
-            _ => Self::Debug,
+            "ERR" | "ERROR"                   => Self::Error,
+            "WRN" | "WARN" | "WARNING"        => Self::Warning,
+            "INF" | "INFO"                    => Self::Info,
+            "DBG" | "DEBUG"                   => Self::Debug,
+            "TRC" | "TRACE" | "VERBOSE"       => Self::Trace,
+            _                                 => Self::Debug,
         }
     }
     fn label(self) -> &'static str {
         match self {
-            Self::Error => "ERR",
+            Self::Error   => "ERR",
             Self::Warning => "WRN",
-            Self::Info => "INF",
-            Self::Debug => "DBG",
-            Self::Trace => "TRC",
+            Self::Info    => "INF",
+            Self::Debug   => "DBG",
+            Self::Trace   => "TRC",
         }
     }
     fn color(self) -> Color32 {
@@ -51,7 +51,7 @@ impl Level {
         match self {
             Self::Error   => Some(Color32::from_rgba_unmultiplied(200, 50, 40, 22)),
             Self::Warning => Some(Color32::from_rgba_unmultiplied(200, 150, 30, 18)),
-            _ => None,
+            _             => None,
         }
     }
     fn index(self) -> usize {
@@ -66,17 +66,16 @@ impl Level {
 
 #[derive(Debug, Clone)]
 struct LogLine {
-    num:      usize,
+    num:       usize,
     timestamp: String,
-    ts_ms:    Option<u64>,
-    delta_ms: Option<u64>,
-    level:    Level,
-    module:   String,
-    message:  String,
-    raw:      String,
+    ts_ms:     Option<u64>,
+    delta_ms:  Option<u64>,
+    level:     Level,
+    module:    String,
+    message:   String,
+    raw:       String,
 }
 
-/// Parse "HH:MM:SS.mmm" (or "HH:MM:SS") into total milliseconds since midnight.
 fn parse_timestamp_ms(ts: &str) -> Option<u64> {
     let ts = ts.trim();
     let c1 = ts.find(':')?;
@@ -92,9 +91,7 @@ fn parse_timestamp_ms(ts: &str) -> Option<u64> {
     };
     let s_str = s_str.trim_end_matches(|c: char| !c.is_ascii_digit());
     let s: u64 = s_str.parse().ok()?;
-    let ms: u64 = if frac.is_empty() {
-        0
-    } else {
+    let ms: u64 = if frac.is_empty() { 0 } else {
         let n = frac.len().min(3);
         let v: u64 = frac[..n].parse().ok()?;
         match n { 1 => v * 100, 2 => v * 10, _ => v }
@@ -103,9 +100,9 @@ fn parse_timestamp_ms(ts: &str) -> Option<u64> {
 }
 
 fn format_delta(ms: u64) -> String {
-    if ms < 1_000      { format!("+{}ms",        ms) }
-    else if ms < 10_000  { format!("+{:.2}s", ms as f64 / 1000.0) }
-    else if ms < 60_000  { format!("+{:.1}s", ms as f64 / 1000.0) }
+    if ms < 1_000       { format!("+{}ms",          ms) }
+    else if ms < 10_000 { format!("+{:.2}s", ms as f64 / 1000.0) }
+    else if ms < 60_000 { format!("+{:.1}s", ms as f64 / 1000.0) }
     else {
         let s = ms / 1_000;
         format!("+{}m{:02}s", s / 60, s % 60)
@@ -141,7 +138,6 @@ fn parse_log_line(raw: &str, num: usize) -> LogLine {
         raw: raw.to_string(),
     };
 
-    // Format 1: [timestamp] [LEVEL] [module] message
     if s.starts_with('[') {
         if let Some((ts_raw, rest)) = take_bracket(&s) {
             let ts = ts_raw.split_whitespace().nth(1)
@@ -159,7 +155,6 @@ fn parse_log_line(raw: &str, num: usize) -> LogLine {
         }
     }
 
-    // Format 2: HH:MM:SS [thread] LEVEL: message
     {
         let parts: Vec<&str> = s.splitn(3, ' ').collect();
         if parts.len() == 3 {
@@ -179,7 +174,6 @@ fn parse_log_line(raw: &str, num: usize) -> LogLine {
         }
     }
 
-    // Format 3: date  [Module] [LVL] message
     if let Some(pos) = s.find("  ") {
         let ts = s[..pos].split_whitespace().nth(1).unwrap_or("").to_string();
         let rest = s[pos..].trim();
@@ -196,32 +190,35 @@ fn parse_log_line(raw: &str, num: usize) -> LogLine {
 // ─── App ─────────────────────────────────────────────────────────────────────
 
 struct LogViewerApp {
-    all_lines:   Vec<LogLine>,
-    filtered:    Vec<usize>,
-    search:      String,
-    search_lc:   String,
-    show:        [bool; 5],
+    all_lines:     Vec<LogLine>,
+    filtered:      Vec<usize>,
+    search:        String,
+    search_lc:     String,
+    show:          [bool; 5],
     module_filter: String,
-    modules:     Vec<String>,
-    counts:      [usize; 5],
-    row_height:  f32,
-    font_size:   f32,
-    selected:    Option<usize>,
-    detail_open: bool,
-    status:      String,
-    drag_hover:  bool,
-    minimap_levels: Vec<u8>,
-    scroll_to_offset:       Option<f32>,
-    current_scroll_offset:  f32,
-    scroll_area_height:     f32,
-    advanced_open: bool,
-    advanced_term: String,
-    case_sensitive: bool,
-    whole_word: bool,
-    highlight_all: bool,
-    match_rows: Vec<usize>,
-    current_match: usize,
-    total_matches: usize,
+    modules:       Vec<String>,
+    counts:        [usize; 5],
+    row_height:    f32,
+    font_size:     f32,
+    selected:      Option<usize>,
+    detail_open:   bool,
+    status:        String,
+    drag_hover:    bool,
+
+    minimap_levels:        Vec<u8>,
+    scroll_to_offset:      Option<f32>,
+    current_scroll_offset: f32,
+    scroll_area_height:    f32,
+
+    // ── Advanced find bar ──────────────────────────────────────────────────
+    find_open:      bool,
+    find_term:      String,
+    find_case:      bool,
+    find_word:      bool,
+    find_highlight: bool,
+    match_rows:     Vec<usize>,   // filtered-row indices of matches
+    current_match:  usize,
+    total_matches:  usize,
 }
 
 impl Default for LogViewerApp {
@@ -240,11 +237,11 @@ impl Default for LogViewerApp {
             scroll_to_offset: None,
             current_scroll_offset: 0.0,
             scroll_area_height: 0.0,
-            advanced_open: false,
-            advanced_term: String::new(),
-            case_sensitive: false,
-            whole_word: false,
-            highlight_all: false,
+            find_open: false,
+            find_term: String::new(),
+            find_case: false,
+            find_word: false,
+            find_highlight: true,
             match_rows: vec![],
             current_match: 0,
             total_matches: 0,
@@ -257,11 +254,7 @@ impl LogViewerApp {
         self.all_lines = text.lines()
             .filter(|l| !l.trim().is_empty())
             .enumerate()
-            .map(|(i, l)| {
-                let mut line = parse_log_line(l, i + 1);
-                line.ts_ms = parse_timestamp_ms(&line.timestamp);
-                line
-            })
+            .map(|(i, l)| { let mut ln = parse_log_line(l, i + 1); ln.ts_ms = parse_timestamp_ms(&ln.timestamp); ln })
             .collect();
 
         let mut prev_ms: Option<u64> = None;
@@ -286,7 +279,7 @@ impl LogViewerApp {
         self.current_scroll_offset = 0.0;
         self.status = format!("Loaded {} lines", self.all_lines.len());
         self.apply_filters();
-        self.recompute_advanced_matches();
+        self.recompute_matches();
     }
 
     fn load_file(&mut self, path: &PathBuf) {
@@ -320,56 +313,45 @@ impl LogViewerApp {
             .map(|&i| self.all_lines[i].level.index() as u8)
             .collect();
 
-        self.recompute_advanced_matches();
+        self.recompute_matches();
     }
 
-    fn recompute_advanced_matches(&mut self) {
+    fn recompute_matches(&mut self) {
         self.match_rows.clear();
         self.total_matches = 0;
-        self.current_match = 0;
 
-        if self.advanced_term.is_empty() || !self.highlight_all {
-            return;
-        }
+        if self.find_term.is_empty() { return; }
 
-        let term = if self.case_sensitive {
-            self.advanced_term.clone()
+        let needle = if self.find_case {
+            self.find_term.clone()
         } else {
-            self.advanced_term.to_lowercase()
+            self.find_term.to_lowercase()
         };
 
         for (idx, &line_idx) in self.filtered.iter().enumerate() {
-            let line = &self.all_lines[line_idx];
-            let haystack = if self.case_sensitive {
-                line.raw.clone()
-            } else {
-                line.raw.to_lowercase()
-            };
-            let matches = if self.whole_word {
-                let pattern = &term;
+            let raw = &self.all_lines[line_idx].raw;
+            let hay = if self.find_case { raw.clone() } else { raw.to_lowercase() };
+
+            let found = if self.find_word {
                 let mut start = 0;
-                let mut found = false;
-                while let Some(found_pos) = haystack[start..].find(pattern) {
-                    let abs_start = start + found_pos;
-                    let abs_end = abs_start + pattern.len();
-                    let left_ok = abs_start == 0 || !haystack.chars().nth(abs_start - 1).unwrap().is_alphanumeric();
-                    let right_ok = abs_end == haystack.len() || !haystack.chars().nth(abs_end).unwrap().is_alphanumeric();
-                    if left_ok && right_ok {
-                        found = true;
-                        break;
-                    }
-                    start = abs_start + 1;
+                let mut hit = false;
+                while let Some(p) = hay[start..].find(&needle) {
+                    let abs = start + p;
+                    let end = abs + needle.len();
+                    let lc = abs == 0 || !hay.as_bytes().get(abs - 1).copied().map(|b| b.is_ascii_alphanumeric()).unwrap_or(false);
+                    let rc = end >= hay.len() || !hay.as_bytes().get(end).copied().map(|b| b.is_ascii_alphanumeric()).unwrap_or(false);
+                    if lc && rc { hit = true; break; }
+                    start = abs + 1;
                 }
-                found
+                hit
             } else {
-                haystack.contains(&term)
+                hay.contains(&needle)
             };
-            if matches {
-                self.match_rows.push(idx);
-            }
+
+            if found { self.match_rows.push(idx); }
         }
         self.total_matches = self.match_rows.len();
-        if self.total_matches > 0 {
+        if self.current_match >= self.total_matches && self.total_matches > 0 {
             self.current_match = 0;
         }
     }
@@ -384,35 +366,36 @@ impl LogViewerApp {
         }
     }
 
+    fn jump_to_match(&mut self, idx: usize) {
+        if self.total_matches == 0 { return; }
+        self.current_match = idx.min(self.total_matches - 1);
+        let row = self.match_rows[self.current_match];
+        self.scroll_to_offset = Some(row as f32 * self.row_height);
+        self.selected = Some(row);
+        self.detail_open = true;
+    }
+
     fn next_match(&mut self) {
         if self.total_matches == 0 { return; }
-        self.current_match = (self.current_match + 1) % self.total_matches;
-        let target_row = self.match_rows[self.current_match];
-        let offset = target_row as f32 * self.row_height;
-        self.scroll_to_offset = Some(offset);
-        self.selected = Some(target_row);
-        self.detail_open = true;
+        let next = (self.current_match + 1) % self.total_matches;
+        self.jump_to_match(next);
     }
 
     fn prev_match(&mut self) {
         if self.total_matches == 0 { return; }
-        self.current_match = if self.current_match == 0 {
-            self.total_matches - 1
-        } else {
-            self.current_match - 1
-        };
-        let target_row = self.match_rows[self.current_match];
-        let offset = target_row as f32 * self.row_height;
-        self.scroll_to_offset = Some(offset);
-        self.selected = Some(target_row);
-        self.detail_open = true;
+        let prev = if self.current_match == 0 { self.total_matches - 1 } else { self.current_match - 1 };
+        self.jump_to_match(prev);
     }
 
     fn is_match_row(&self, row_idx: usize) -> bool {
-        if !self.highlight_all || self.advanced_term.is_empty() {
-            return false;
-        }
-        self.match_rows.binary_search(&row_idx).is_ok()
+        self.find_highlight && !self.find_term.is_empty()
+            && self.match_rows.binary_search(&row_idx).is_ok()
+    }
+
+    fn is_current_match_row(&self, row_idx: usize) -> bool {
+        self.find_highlight && !self.find_term.is_empty()
+            && self.total_matches > 0
+            && self.match_rows.get(self.current_match) == Some(&row_idx)
     }
 }
 
@@ -489,15 +472,34 @@ fn level_toggle(ui: &mut egui::Ui, label: &str, count: usize, active: bool, colo
     };
     let btn = Button::new(
         RichText::new(format!("{} {}", label, count))
-            .color(fg)
-            .font(FontId::monospace(11.0))
-            .strong(),
+            .color(fg).font(FontId::monospace(11.0)).strong(),
     )
-    .fill(bg)
-    .stroke(stroke)
-    .rounding(Rounding::same(5.0))
+    .fill(bg).stroke(stroke).rounding(Rounding::same(5.0))
     .min_size(Vec2::new(0.0, 28.0));
     ui.add(btn).clicked()
+}
+
+// Compact toggle pill (for find bar options)
+fn find_toggle(ui: &mut egui::Ui, label: &str, tooltip: &str, active: bool) -> bool {
+    let (fg, bg, stroke) = if active {
+        (
+            COL_ACCENT,
+            Color32::from_rgba_unmultiplied(88, 166, 255, 30),
+            Stroke::new(1.0, Color32::from_rgba_unmultiplied(88, 166, 255, 180)),
+        )
+    } else {
+        (
+            Color32::from_gray(100),
+            Color32::from_rgb(18, 23, 30),
+            Stroke::new(0.5, Color32::from_gray(40)),
+        )
+    };
+    let btn = Button::new(RichText::new(label).color(fg).font(FontId::monospace(10.5)).strong())
+        .fill(bg)
+        .stroke(stroke)
+        .rounding(Rounding::same(4.0))
+        .min_size(Vec2::new(28.0, 24.0));
+    ui.add(btn).on_hover_text(tooltip).clicked()
 }
 
 // ─── App::update ─────────────────────────────────────────────────────────────
@@ -506,6 +508,7 @@ impl App for LogViewerApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut Frame) {
         ctx.set_visuals(dark_visuals());
 
+        // ── Drag & drop ────────────────────────────────────────────────────
         ctx.input(|i| {
             self.drag_hover = !i.raw.hovered_files.is_empty();
             for d in &i.raw.dropped_files {
@@ -516,25 +519,28 @@ impl App for LogViewerApp {
             }
         });
 
-        let open_dialog = ctx.input(|i| i.key_pressed(Key::O) && i.modifiers.ctrl);
-        if open_dialog { self.open_file_dialog(); }
+        if ctx.input(|i| i.key_pressed(Key::O) && i.modifiers.ctrl) {
+            self.open_file_dialog();
+        }
+
+        // Open/close find bar
+        if ctx.input(|i| (i.key_pressed(Key::H) && i.modifiers.ctrl)
+            || (i.key_pressed(Key::F) && i.modifiers.ctrl && self.find_open)) {
+            self.find_open = !self.find_open;
+        }
 
         ctx.input(|i| {
             if i.key_pressed(Key::Escape) {
-                if self.advanced_open {
-                    self.advanced_open = false;
+                if self.find_open {
+                    self.find_open = false;
                 } else if !self.search.is_empty() {
                     self.search.clear(); self.search_lc.clear(); self.apply_filters();
-                } else { self.selected = None; self.detail_open = false; }
+                } else {
+                    self.selected = None; self.detail_open = false;
+                }
             }
-            if i.key_pressed(Key::Enter) && i.modifiers.ctrl && !self.advanced_term.is_empty() {
-                self.highlight_all = true;
-                self.recompute_advanced_matches();
-            }
-            if i.key_pressed(Key::Enter) && i.modifiers.shift && self.total_matches > 0 {
-                self.prev_match();
-            } else if i.key_pressed(Key::Enter) && self.total_matches > 0 {
-                self.next_match();
+            if i.key_pressed(Key::Enter) && self.find_open {
+                if i.modifiers.shift { self.prev_match(); } else { self.next_match(); }
             }
         });
 
@@ -549,15 +555,15 @@ impl App for LogViewerApp {
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 12.0;
 
-                    // Search bar with visible frame (removed .stroke())
                     let search_id = egui::Id::new("search_box");
-                    let search_style = egui::TextEdit::singleline(&mut self.search)
-                        .id(search_id)
-                        .hint_text(RichText::new("🔍  Search (Ctrl+F)").color(COL_FAINT))
-                        .desired_width(260.0)
-                        .font(FontId::monospace(12.0))
-                        .frame(true);   // enables frame background and border
-                    let re = ui.add(search_style);
+                    let re = ui.add(
+                        egui::TextEdit::singleline(&mut self.search)
+                            .id(search_id)
+                            .hint_text(RichText::new("🔍  Search (Ctrl+F)").color(COL_FAINT))
+                            .desired_width(260.0)
+                            .font(FontId::monospace(12.0))
+                            .frame(true),
+                    );
                     if re.changed() {
                         self.search_lc = self.search.to_lowercase();
                         self.apply_filters();
@@ -566,8 +572,23 @@ impl App for LogViewerApp {
                         ctx.memory_mut(|m| m.request_focus(search_id));
                     }
 
-                    if ui.add(icon_button("🔧")).on_hover_text("Advanced search (Ctrl+H)").clicked() {
-                        self.advanced_open = !self.advanced_open;
+                    // Advanced find toggle
+                    let find_icon_color = if self.find_open { COL_ACCENT } else { COL_MUTED };
+                    let find_btn = Button::new(
+                        RichText::new("⊞").color(find_icon_color).font(FontId::proportional(15.0))
+                    )
+                    .fill(if self.find_open {
+                        Color32::from_rgba_unmultiplied(88, 166, 255, 22)
+                    } else {
+                        Color32::from_rgb(30, 36, 45)
+                    })
+                    .stroke(Stroke::new(if self.find_open { 1.0 } else { 0.5 },
+                        if self.find_open { Color32::from_rgba_unmultiplied(88, 166, 255, 160) } else { COL_BORDER }
+                    ))
+                    .rounding(Rounding::same(6.0))
+                    .min_size(Vec2::new(32.0, 28.0));
+                    if ui.add(find_btn).on_hover_text("Advanced Find  (Ctrl+H)").clicked() {
+                        self.find_open = !self.find_open;
                     }
 
                     if !self.modules.is_empty() {
@@ -617,14 +638,9 @@ impl App for LogViewerApp {
 
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                         ui.spacing_mut().item_spacing.x = 8.0;
-
-                        if ui.add(primary_button("📂 Open  Ctrl+O")).clicked() {
-                            self.open_file_dialog();
-                        }
+                        if ui.add(primary_button("📂 Open  Ctrl+O")).clicked() { self.open_file_dialog(); }
                         if !self.all_lines.is_empty() {
-                            if ui.add(primary_button("🗑 Clear")).clicked() {
-                                *self = LogViewerApp::default();
-                            }
+                            if ui.add(primary_button("🗑 Clear")).clicked() { *self = LogViewerApp::default(); }
                         }
                         ui.add(egui::Separator::default().vertical().spacing(8.0));
                         if ui.add(icon_button("A+")).on_hover_text("Increase font size").clicked() {
@@ -640,159 +656,196 @@ impl App for LogViewerApp {
             });
 
         // ════════════════════════════════════════════════════════════════════
-        // ADVANCED SEARCH WINDOW
+        // FIND BAR  (inline, anchored below toolbar — VS Code style)
         // ════════════════════════════════════════════════════════════════════
-        if self.advanced_open {
-            Window::new("🔍  Find")
-                .collapsible(false)
-                .resizable(false)
-                .default_size([540.0, 260.0])
-                .frame(egui::Frame::none()
-                    .fill(BG_PANEL)
-                    .stroke(Stroke::new(1.0, COL_BORDER))
-                    .inner_margin(egui::Margin::symmetric(14.0, 12.0)))
+        if self.find_open {
+            // Colour-coded match counter state
+            let (counter_text, counter_color) = if self.find_term.is_empty() {
+                ("No term".to_string(), COL_FAINT)
+            } else if self.total_matches == 0 {
+                ("0 results".to_string(), Color32::from_rgb(255, 110, 90))
+            } else {
+                (
+                    format!("{} / {}", self.current_match + 1, self.total_matches),
+                    COL_ACCENT,
+                )
+            };
+
+            // Track if options changed so we can call recompute_matches once
+            let mut opts_changed = false;
+            let mut do_next = false;
+            let mut do_prev = false;
+            let mut do_close = false;
+            let mut new_term = self.find_term.clone();
+            let mut new_case = self.find_case;
+            let mut new_word = self.find_word;
+            let mut new_highlight = self.find_highlight;
+
+            egui::TopBottomPanel::top("find_bar")
+                .frame(
+                    egui::Frame::none()
+                        .fill(Color32::from_rgb(16, 21, 29))
+                        .stroke(Stroke::new(1.0, COL_BORDER))
+                        .inner_margin(egui::Margin { left: 14.0, right: 10.0, top: 7.0, bottom: 7.0 }),
+                )
                 .show(ctx, |ui| {
-                    ui.spacing_mut().item_spacing = Vec2::new(8.0, 8.0);
-
-                    ui.horizontal(|ui| {
-                        ui.label(RichText::new("Find:").color(COL_TEXT).font(FontId::proportional(11.0)).strong());
-                        let text_edit = egui::TextEdit::singleline(&mut self.advanced_term)
-                            .desired_width(f32::INFINITY);
-                        let response = text_edit.show(ui);
-                        if response.response.changed() {
-                            self.recompute_advanced_matches();
-                        }
-                    });
-
-                    ui.columns(2, |cols| {
-                        cols[0].vertical(|ui| {
-                            let case_changed = ui.checkbox(&mut self.case_sensitive, 
-                                RichText::new("Match case").color(COL_TEXT)).changed();
-                            let word_changed = ui.checkbox(&mut self.whole_word,
-                                RichText::new("Whole word").color(COL_TEXT)).changed();
-                            if case_changed || word_changed {
-                                self.recompute_advanced_matches();
-                            }
-                        });
-                        cols[1].vertical(|ui| {
-                            let highlight_changed = ui.checkbox(&mut self.highlight_all,
-                                RichText::new("Highlight all").color(COL_TEXT)).changed();
-                            if highlight_changed {
-                                self.recompute_advanced_matches();
-                            }
-                        });
-                    });
-
-                    ui.add(egui::Separator::default().horizontal().spacing(4.0));
-
-                    ui.horizontal(|ui| {
-                        ui.spacing_mut().item_spacing.x = 12.0;
-                        
-                        let status_text = if self.advanced_term.is_empty() {
-                            RichText::new("Enter search term").color(COL_FAINT)
-                        } else if self.total_matches == 0 {
-                            RichText::new("No matches found").color(Color32::from_rgb(255, 120, 100))
-                        } else if self.total_matches == 1 {
-                            RichText::new("1 match").color(COL_ACCENT)
-                        } else {
-                            RichText::new(format!("{} matches", self.total_matches)).color(COL_ACCENT)
-                        };
-                        ui.label(status_text.font(FontId::monospace(11.0)).strong());
-
-                        if self.total_matches > 0 {
-                            ui.separator();
-                            ui.label(
-                                RichText::new(format!("match {} / {}", self.current_match + 1, self.total_matches))
-                                    .color(COL_MUTED)
-                                    .font(FontId::monospace(10.0))
-                            );
-                        }
-
-                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                            if ui.button("✕").on_hover_text("Close (Esc)").clicked() {
-                                self.advanced_open = false;
-                            }
-                        });
-                    });
-
-                    ui.add(egui::Separator::default().horizontal().spacing(4.0));
-
                     ui.horizontal(|ui| {
                         ui.spacing_mut().item_spacing.x = 6.0;
 
-                        if ui.add(
-                            Button::new(RichText::new("⬇ Find Next").color(COL_TEXT)
-                                .font(FontId::proportional(11.0)))
-                                .fill(Color32::from_rgb(40, 50, 65))
-                                .stroke(Stroke::new(0.5, COL_BORDER))
-                                .rounding(Rounding::same(6.0))
-                                .min_size(Vec2::new(0.0, 30.0))
-                        ).on_hover_text("Find next match (Enter)").clicked() {
-                            self.next_match();
+                        // ── Label ──────────────────────────────────────────
+                        ui.label(
+                            RichText::new("Find")
+                                .font(FontId::monospace(10.5))
+                                .color(COL_MUTED)
+                                .strong(),
+                        );
+
+                        // ── Input field ────────────────────────────────────
+                        let find_id = egui::Id::new("find_bar_input");
+
+                        // Border color reacts to match state
+                        let input_stroke = if !new_term.is_empty() && self.total_matches == 0 {
+                            Stroke::new(1.5, Color32::from_rgb(220, 80, 70))
+                        } else if !new_term.is_empty() {
+                            Stroke::new(1.5, Color32::from_rgba_unmultiplied(88, 166, 255, 200))
+                        } else {
+                            Stroke::new(1.0, COL_BORDER)
+                        };
+
+                        // Custom-styled text edit via a surrounding rect
+                        let te_resp = ui.add(
+                            egui::TextEdit::singleline(&mut new_term)
+                                .id(find_id)
+                                .hint_text(
+                                    RichText::new("Search in log…").color(COL_FAINT),
+                                )
+                                .desired_width(260.0)
+                                .font(FontId::monospace(12.0))
+                                .frame(true),
+                        );
+                        // Overdraw the border to give it color
+                        ui.painter().rect_stroke(te_resp.rect, Rounding::same(4.0), input_stroke);
+
+                        if te_resp.changed() {
+                            opts_changed = true;
                         }
 
-                        if ui.add(
-                            Button::new(RichText::new("⬆ Find Previous").color(COL_TEXT)
-                                .font(FontId::proportional(11.0)))
-                                .fill(Color32::from_rgb(40, 50, 65))
-                                .stroke(Stroke::new(0.5, COL_BORDER))
-                                .rounding(Rounding::same(6.0))
-                                .min_size(Vec2::new(0.0, 30.0))
-                        ).on_hover_text("Find previous match (Shift+Enter)").clicked() {
-                            self.prev_match();
-                        }
-
-                        ui.separator();
-
-                        if ui.add(
-                            Button::new(RichText::new("📊 Count All").color(COL_TEXT)
-                                .font(FontId::proportional(11.0)))
-                                .fill(Color32::from_rgb(40, 50, 65))
-                                .stroke(Stroke::new(0.5, COL_BORDER))
-                                .rounding(Rounding::same(6.0))
-                                .min_size(Vec2::new(0.0, 30.0))
-                        ).on_hover_text("Count all matches").clicked() {
-                            self.recompute_advanced_matches();
-                            if self.total_matches > 0 {
-                                self.status = format!("Found {} matches", self.total_matches);
+                        // Focus the input whenever the bar opens
+                        ctx.memory_mut(|m| {
+                            if !m.has_focus(find_id) {
+                                // only request focus once — when bar first opens
+                                // We use a small trick: check if nothing else has focus
+                                m.request_focus(find_id);
                             }
+                        });
+
+                        // ── Toggle pills ───────────────────────────────────
+                        ui.add_space(2.0);
+                        if find_toggle(ui, "Aa", "Match case", new_case) {
+                            new_case = !new_case;
+                            opts_changed = true;
+                        }
+                        if find_toggle(ui, "W", "Whole word", new_word) {
+                            new_word = !new_word;
+                            opts_changed = true;
+                        }
+                        if find_toggle(ui, "🔆", "Highlight all matches", new_highlight) {
+                            new_highlight = !new_highlight;
+                            opts_changed = true;
                         }
 
-                        if ui.add(
-                            Button::new(RichText::new("✓ Find All").color(COL_TEXT)
-                                .font(FontId::proportional(11.0)))
-                                .fill(Color32::from_rgb(40, 50, 65))
-                                .stroke(Stroke::new(0.5, COL_BORDER))
-                                .rounding(Rounding::same(6.0))
-                                .min_size(Vec2::new(0.0, 30.0))
-                        ).on_hover_text("Highlight all matches (Ctrl+Enter)").clicked() {
-                            self.highlight_all = true;
-                            self.recompute_advanced_matches();
+                        // ── Divider ────────────────────────────────────────
+                        ui.add_space(4.0);
+                        ui.add(egui::Separator::default().vertical().spacing(6.0));
+                        ui.add_space(4.0);
+
+                        // ── Counter badge ──────────────────────────────────
+                        let badge_bg = if !new_term.is_empty() && self.total_matches == 0 {
+                            Color32::from_rgba_unmultiplied(180, 50, 40, 60)
+                        } else {
+                            Color32::from_rgb(22, 28, 38)
+                        };
+                        egui::Frame::none()
+                            .fill(badge_bg)
+                            .stroke(Stroke::new(0.5, COL_BORDER))
+                            .rounding(Rounding::same(4.0))
+                            .inner_margin(egui::Margin::symmetric(8.0, 3.0))
+                            .show(ui, |ui| {
+                                ui.label(
+                                    RichText::new(&counter_text)
+                                        .font(FontId::monospace(10.5))
+                                        .color(counter_color)
+                                        .strong(),
+                                );
+                            });
+
+                        // ── Nav arrows ─────────────────────────────────────
+                        let nav_enabled = self.total_matches > 0;
+
+                        let prev_btn = Button::new(
+                            RichText::new("↑")
+                                .color(if nav_enabled { COL_TEXT } else { COL_FAINT })
+                                .font(FontId::monospace(13.0)),
+                        )
+                        .fill(Color32::from_rgb(28, 34, 44))
+                        .stroke(Stroke::new(0.5, COL_BORDER))
+                        .rounding(Rounding::same(5.0))
+                        .min_size(Vec2::new(28.0, 26.0));
+
+                        let next_btn = Button::new(
+                            RichText::new("↓")
+                                .color(if nav_enabled { COL_TEXT } else { COL_FAINT })
+                                .font(FontId::monospace(13.0)),
+                        )
+                        .fill(Color32::from_rgb(28, 34, 44))
+                        .stroke(Stroke::new(0.5, COL_BORDER))
+                        .rounding(Rounding::same(5.0))
+                        .min_size(Vec2::new(28.0, 26.0));
+
+                        if ui.add(prev_btn).on_hover_text("Previous match  (Shift+Enter)").clicked() && nav_enabled {
+                            do_prev = true;
+                        }
+                        if ui.add(next_btn).on_hover_text("Next match  (Enter)").clicked() && nav_enabled {
+                            do_next = true;
                         }
 
-                        if ui.add(
-                            Button::new(RichText::new("✕ Clear All").color(Color32::from_rgb(200, 120, 100))
-                                .font(FontId::proportional(11.0)))
-                                .fill(Color32::from_rgb(50, 30, 30))
-                                .stroke(Stroke::new(0.5, Color32::from_rgb(150, 80, 70)))
-                                .rounding(Rounding::same(6.0))
-                                .min_size(Vec2::new(0.0, 30.0))
-                        ).on_hover_text("Clear highlights").clicked() {
-                            self.highlight_all = false;
-                            self.match_rows.clear();
-                            self.total_matches = 0;
-                            self.current_match = 0;
-                        }
+                        // ── Keyboard shortcut hint ─────────────────────────
+                        ui.add_space(6.0);
+                        ui.label(
+                            RichText::new("Enter ↓  Shift+Enter ↑  Esc close")
+                                .font(FontId::monospace(9.5))
+                                .color(COL_FAINT),
+                        );
+
+                        // ── Close ──────────────────────────────────────────
+                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                            let x_btn = Button::new(
+                                RichText::new("✕").color(Color32::from_gray(130)).font(FontId::proportional(12.0)),
+                            )
+                            .fill(Color32::TRANSPARENT)
+                            .stroke(Stroke::NONE)
+                            .rounding(Rounding::same(4.0))
+                            .min_size(Vec2::new(26.0, 26.0));
+                            if ui.add(x_btn).on_hover_text("Close find bar  (Esc)").clicked() {
+                                do_close = true;
+                            }
+                        });
                     });
-
-                    ui.add_space(4.0);
-                    ui.separator();
-                    ui.label(
-                        RichText::new("⌨ Enter  Next  •  Shift+Enter  Previous  •  Ctrl+Enter  Find All")
-                            .color(COL_FAINT)
-                            .font(FontId::monospace(9.5))
-                    );
                 });
+
+            // Apply mutations after borrow ends
+            if new_term != self.find_term {
+                self.find_term = new_term;
+            }
+            if opts_changed || new_case != self.find_case || new_word != self.find_word || new_highlight != self.find_highlight {
+                self.find_case      = new_case;
+                self.find_word      = new_word;
+                self.find_highlight = new_highlight;
+                self.recompute_matches();
+            }
+            if do_prev  { self.prev_match(); }
+            if do_next  { self.next_match(); }
+            if do_close { self.find_open = false; }
         }
 
         // ════════════════════════════════════════════════════════════════════
@@ -846,9 +899,7 @@ impl App for LogViewerApp {
                         ui.horizontal(|ui| {
                             ui.label(
                                 RichText::new("LINE DETAIL")
-                                    .font(FontId::monospace(10.0))
-                                    .color(COL_FAINT)
-                                    .strong(),
+                                    .font(FontId::monospace(10.0)).color(COL_FAINT).strong(),
                             );
                             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                                 ui.spacing_mut().item_spacing.x = 8.0;
@@ -915,12 +966,13 @@ impl App for LogViewerApp {
             let ml         = self.minimap_levels.clone();
             let mut jump_to_offset: Option<f32> = None;
 
-            const MM_ERR:   Color32 = Color32::from_rgb(245,  95,  85);
-            const MM_WRN:   Color32 = Color32::from_rgb(235, 180,  55);
-            const MM_INF:   Color32 = Color32::from_rgb( 70, 200,  95);
-            const MM_DBG:   Color32 = Color32::from_rgb( 95, 165, 245);
-            const MM_TRC:   Color32 = Color32::from_rgb(125, 130, 145);
-            const MM_COLS: [Color32; 5] = [MM_ERR, MM_WRN, MM_INF, MM_DBG, MM_TRC];
+            const MM_COLS: [Color32; 5] = [
+                Color32::from_rgb(245,  95,  85),  // ERR
+                Color32::from_rgb(235, 180,  55),  // WRN
+                Color32::from_rgb( 70, 200,  95),  // INF
+                Color32::from_rgb( 95, 165, 245),  // DBG
+                Color32::from_rgb(125, 130, 145),  // TRC
+            ];
 
             egui::SidePanel::right("minimap_panel")
                 .exact_width(34.0)
@@ -944,39 +996,20 @@ impl App for LogViewerApp {
                     let by0 = r.min.y;
                     let ah  = r.height();
 
-                    const THRESHOLD: f32 = 0.20;
-                    let n = n_filt as f32;
-                    let pixels = ah as usize;
-                    for py in 0..pixels {
-                        let i0 = ((py       as f32 * n / ah) as usize).min(n_filt - 1);
-                        let i1 = (((py + 1) as f32 * n / ah) as usize).min(n_filt - 1);
-                        let i1 = i1.max(i0);
-                        let bucket_size = (i1 - i0 + 1) as f32;
-
+                    for py in 0..ah as usize {
+                        let i0 = ((py as f32 * n_filt as f32 / ah) as usize).min(n_filt - 1);
+                        let i1 = (((py + 1) as f32 * n_filt as f32 / ah) as usize).min(n_filt - 1).max(i0);
+                        let bucket = (i1 - i0 + 1) as f32;
                         let mut counts = [0u16; 5];
-                        for i in i0..=i1 {
-                            counts[ml[i] as usize] += 1;
-                        }
-
-                        let dominant = (0..5_usize)
-                            .find(|&lvl| counts[lvl] as f32 / bucket_size >= THRESHOLD)
-                            .unwrap_or_else(|| {
-                                counts.iter().enumerate()
-                                    .max_by(|&(ia, &ca), &(ib, &cb)| {
-                                        ca.cmp(&cb).then(ib.cmp(&ia))
-                                    })
-                                    .map(|(idx, _)| idx)
-                                    .unwrap_or(4)
-                            });
-
+                        for i in i0..=i1 { counts[ml[i] as usize] += 1; }
+                        let dominant = (0..5).find(|&l| counts[l] as f32 / bucket >= 0.20)
+                            .unwrap_or_else(|| counts.iter().enumerate()
+                                .max_by(|(ia, &ca), (ib, &cb)| ca.cmp(&cb).then(ib.cmp(ia)))
+                                .map(|(i, _)| i).unwrap_or(4));
                         let y0 = by0 + py as f32;
                         painter.rect_filled(
-                            egui::Rect::from_min_max(
-                                egui::pos2(bx0, y0),
-                                egui::pos2(bx1, y0 + 1.6),
-                            ),
-                            Rounding::ZERO,
-                            MM_COLS[dominant],
+                            egui::Rect::from_min_max(egui::pos2(bx0, y0), egui::pos2(bx1, y0 + 1.6)),
+                            Rounding::ZERO, MM_COLS[dominant],
                         );
                     }
 
@@ -988,8 +1021,7 @@ impl App for LogViewerApp {
                         let wy1 = (by0 + vb * ah).clamp(wy0 + 4.0, r.max.y);
                         painter.rect(
                             egui::Rect::from_min_max(
-                                egui::pos2(r.min.x + 1.5, wy0),
-                                egui::pos2(r.max.x - 1.0, wy1),
+                                egui::pos2(r.min.x + 1.5, wy0), egui::pos2(r.max.x - 1.0, wy1),
                             ),
                             Rounding::same(2.0),
                             Color32::from_rgba_unmultiplied(200, 225, 255, 18),
@@ -1019,22 +1051,18 @@ impl App for LogViewerApp {
         }
 
         // ════════════════════════════════════════════════════════════════════
-        // MAIN LOG AREA (scrollbar hidden, only minimap)
+        // MAIN LOG AREA
         // ════════════════════════════════════════════════════════════════════
         egui::CentralPanel::default()
             .frame(egui::Frame::none().fill(BG_BASE))
             .show(ctx, |ui| {
 
                 if self.all_lines.is_empty() {
-                    // Center the empty state content both horizontally and vertically
                     ui.centered_and_justified(|ui| {
                         ui.vertical_centered(|ui| {
-                            // Push content to vertical center
                             let available = ui.available_height();
-                            let content_height = 120.0; // approximate height of the content
-                            let top_margin = (available - content_height).max(0.0) / 2.0;
+                            let top_margin = (available - 120.0).max(0.0) / 2.0;
                             ui.add_space(top_margin);
-
                             ui.label(RichText::new("Drop a log file here").size(22.0).color(COL_MUTED));
                             ui.add_space(8.0);
                             ui.label(RichText::new(
@@ -1047,7 +1075,7 @@ impl App for LogViewerApp {
                             ).clicked() { self.open_file_dialog(); }
                             ui.add_space(12.0);
                             ui.label(RichText::new(
-                                "Ctrl+O  open  |  Ctrl+F  search  |  Ctrl+H  advanced  |  Esc  clear/deselect"
+                                "Ctrl+O  open  |  Ctrl+F  search  |  Ctrl+H  find  |  Esc  clear/deselect"
                             ).size(11.0).color(COL_FAINT));
                         });
                     });
@@ -1061,7 +1089,7 @@ impl App for LogViewerApp {
                     return;
                 }
 
-                // column headers
+                // Column headers
                 {
                     let hdr_h = 18.0;
                     let (hdr_rect, _) = ui.allocate_exact_size(
@@ -1073,11 +1101,11 @@ impl App for LogViewerApp {
                     let fid = FontId::monospace(9.5);
                     let col = Color32::from_rgb(140, 150, 170);
 
-                    p.text(egui::pos2(x0 + COL_LN - 6.0, y), Align2::RIGHT_CENTER, "#",       fid.clone(), col);
-                    p.text(egui::pos2(x0 + COL_LN,        y), Align2::LEFT_CENTER,  "TIME",    fid.clone(), col);
+                    p.text(egui::pos2(x0 + COL_LN - 6.0, y), Align2::RIGHT_CENTER, "#", fid.clone(), col);
+                    p.text(egui::pos2(x0 + COL_LN, y), Align2::LEFT_CENTER, "TIME", fid.clone(), col);
                     p.text(egui::pos2(x0 + COL_LN + COL_TS, y), Align2::LEFT_CENTER, "Δ TIME", fid.clone(), col);
-                    p.text(egui::pos2(x0 + COL_LN + COL_TS + COL_DT, y), Align2::LEFT_CENTER, "LVL",     fid.clone(), col);
-                    p.text(egui::pos2(x0 + COL_LN + COL_TS + COL_DT + COL_LV, y), Align2::LEFT_CENTER, "MODULE",  fid.clone(), col);
+                    p.text(egui::pos2(x0 + COL_LN + COL_TS + COL_DT, y), Align2::LEFT_CENTER, "LVL", fid.clone(), col);
+                    p.text(egui::pos2(x0 + COL_LN + COL_TS + COL_DT + COL_LV, y), Align2::LEFT_CENTER, "MODULE", fid.clone(), col);
                     p.text(egui::pos2(x0 + COL_LN + COL_TS + COL_DT + COL_LV + COL_MOD, y), Align2::LEFT_CENTER, "MESSAGE", fid.clone(), col);
                 }
                 ui.add(egui::Separator::default().horizontal().spacing(1.0));
@@ -1085,7 +1113,6 @@ impl App for LogViewerApp {
                 let row_h   = self.row_height;
                 let font_sz = self.font_size;
                 let n       = self.filtered.len();
-
                 let visible_height = ui.available_height();
 
                 let mut sa = ScrollArea::vertical()
@@ -1104,6 +1131,7 @@ impl App for LogViewerApp {
                         let line_idx = match self.filtered.get(row_idx) { Some(&i) => i, None => continue };
                         let line     = match self.all_lines.get(line_idx) { Some(l) => l, None => continue };
                         let is_sel   = self.selected == Some(row_idx);
+                        let is_cur   = self.is_current_match_row(row_idx);
                         let is_match = self.is_match_row(row_idx);
 
                         let (row_rect, resp) = ui.allocate_exact_size(
@@ -1113,8 +1141,12 @@ impl App for LogViewerApp {
 
                         let bg = if is_sel {
                             BG_ROW_SEL
+                        } else if is_cur {
+                            // Current focused match — bright amber highlight
+                            Color32::from_rgba_unmultiplied(255, 180, 40, 55)
                         } else if is_match {
-                            Color32::from_rgba_unmultiplied(255, 200, 50, 40)
+                            // Other matches — subtle gold
+                            Color32::from_rgba_unmultiplied(200, 150, 30, 28)
                         } else if resp.hovered() {
                             BG_ROW_HOVER
                         } else if let Some(c) = line.level.row_bg() {
@@ -1122,14 +1154,23 @@ impl App for LogViewerApp {
                         } else {
                             Color32::TRANSPARENT
                         };
+
                         if bg != Color32::TRANSPARENT {
                             ui.painter().rect_filled(row_rect, Rounding::ZERO, bg);
                         }
 
+                        // Left accent bar for ERR/WRN
                         if matches!(line.level, Level::Error | Level::Warning) {
                             ui.painter().rect_filled(
                                 egui::Rect::from_min_size(row_rect.min, Vec2::new(2.5, row_h)),
                                 Rounding::ZERO, line.level.color(),
+                            );
+                        }
+                        // Left accent bar for current match
+                        if is_cur {
+                            ui.painter().rect_filled(
+                                egui::Rect::from_min_size(row_rect.min, Vec2::new(2.5, row_h)),
+                                Rounding::ZERO, Color32::from_rgb(255, 200, 60),
                             );
                         }
 
@@ -1152,13 +1193,9 @@ impl App for LogViewerApp {
                         if let Some(dms) = line.delta_ms {
                             if dms > 0 {
                                 let s = format_delta(dms);
-                                let dc = if dms >= 1000 {
-                                    Color32::from_rgb(255, 200, 80)
-                                } else if dms >= 100 {
-                                    Color32::from_rgb(180, 180, 200)
-                                } else {
-                                    Color32::from_rgb(120, 130, 150)
-                                };
+                                let dc = if dms >= 1000 { Color32::from_rgb(255, 200, 80) }
+                                    else if dms >= 100  { Color32::from_rgb(180, 180, 200) }
+                                    else                { Color32::from_rgb(120, 130, 150) };
                                 p.text(egui::pos2(x, y), Align2::LEFT_CENTER, s, fxs.clone(), dc);
                             }
                         }
@@ -1197,33 +1234,14 @@ impl App for LogViewerApp {
 }
 
 // ─── main ─────────────────────────────────────────────────────────────────────
+
 fn main() -> eframe::Result<()> {
-    // Load the icon for the window (optional)
-    let icon = image::load_from_memory(include_bytes!("../assets/logo.ico"))
-        .ok()
-        .and_then(|img| {
-            let rgba = img.to_rgba8();
-            let (width, height) = rgba.dimensions();
-            Some(IconData {
-                rgba: rgba.into_raw(),
-                width,
-                height,
-            })
-        });
-
-    let mut viewport = egui::ViewportBuilder::default()
-        .with_title("XTR Log Viewer")
-        .with_inner_size([1440.0, 900.0])
-        .with_min_inner_size([800.0, 400.0])
-        .with_drag_and_drop(true);
-
-    // Only set the icon if we successfully loaded it
-    if let Some(icon_data) = icon {
-        viewport = viewport.with_icon(icon_data);
-    }
-
     let opts = NativeOptions {
-        viewport,
+        viewport: egui::ViewportBuilder::default()
+            .with_title("XTR Log Viewer")
+            .with_inner_size([1440.0, 900.0])
+            .with_min_inner_size([800.0, 400.0])
+            .with_drag_and_drop(true),
         ..Default::default()
     };
 
