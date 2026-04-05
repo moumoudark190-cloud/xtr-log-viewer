@@ -55,8 +55,12 @@ impl Theme {
         visuals.selection.bg_fill = Color32::from_rgba_unmultiplied(88, 166, 255, 80);
         visuals.hyperlink_color = self.accent;
         visuals.extreme_bg_color = self.bg_main;
-        // Fix shadow issue: use standard shadow or manual rect drawing
-        visuals.popup_shadow = egui::epaint::Shadow { offset: Vec2::new(0.0, 4.0), blur: 20.0, color: Color32::BLACK }; 
+        visuals.popup_shadow = egui::epaint::Shadow { 
+            offset: Vec2::new(0.0, 4.0), 
+            blur: 20.0, 
+            spread: 0.0,
+            color: Color32::BLACK 
+        };
         ctx.set_visuals(visuals);
     }
 }
@@ -506,11 +510,11 @@ impl App for LogViewerApp {
                         ui.add_space(12.0);
                         ui.menu_button(RichText::new("File").font(FontId::proportional(12.0)), |ui| {
                             ui.set_min_width(180.0);
-                            if ui.button(" Open...").clicked() { self.open_file_dialog(); ui.close_menu(); }
+                            if ui.button("📁 Open...").clicked() { self.open_file_dialog(); ui.close_menu(); }
                             if ui.button("🔄 Reload").clicked() { if let Some(p) = self.current_file.clone() { self.load_file(&p); } ui.close_menu(); }
                             ui.separator();
                             if ui.button("💾 Export Filtered").clicked() { self.export_filtered(); ui.close_menu(); }
-                            if ui.button(" Clear").clicked() { self.clear_file(); ui.close_menu(); }
+                            if ui.button("🗑 Clear").clicked() { self.clear_file(); ui.close_menu(); }
                         });
                         ui.menu_button(RichText::new("Help").font(FontId::proportional(12.0)), |ui| {
                             ui.label("Ctrl+O: Open"); ui.label("Ctrl+F: Find"); ui.label("Ctrl+N: Navigation");
@@ -593,10 +597,10 @@ impl App for LogViewerApp {
                                 self.nav_open = !self.nav_open;
                             }
 
-                            if icon_btn(ui, "", "Find Dialog (Ctrl+F)", self.find_dialog_open, &self.theme) { self.find_dialog_open = true; }
+                            if icon_btn(ui, "🔍", "Find Dialog (Ctrl+F)", self.find_dialog_open, &self.theme) { self.find_dialog_open = true; }
                             
                             if self.all_lines.is_empty() {
-                                if ui.add(Button::new(RichText::new(" Open File").strong().color(self.theme.bg_main)).fill(self.theme.accent).stroke(Stroke::NONE).rounding(Rounding::same(6.0)).min_size(Vec2::new(0.0, 28.0))).clicked() { self.open_file_dialog(); }
+                                if ui.add(Button::new(RichText::new("📁 Open File").strong().color(self.theme.bg_main)).fill(self.theme.accent).stroke(Stroke::NONE).rounding(Rounding::same(6.0)).min_size(Vec2::new(0.0, 28.0))).clicked() { self.open_file_dialog(); }
                             }
                         });
                     });
@@ -617,7 +621,16 @@ impl App for LogViewerApp {
                 .collapsible(false)
                 .resizable(false)
                 .title_bar(false)
-                .frame(EguiFrame::none().fill(self.theme.bg_panel).stroke(Stroke::new(1.0, self.theme.border)).rounding(Rounding::same(10.0)).shadow(egui::epaint::Shadow { offset: Vec2::new(0.0, 4.0), blur: 20.0, color: Color32::BLACK }))
+                .frame(EguiFrame::none()
+                    .fill(self.theme.bg_panel)
+                    .stroke(Stroke::new(1.0, self.theme.border))
+                    .rounding(Rounding::same(10.0))
+                    .shadow(egui::epaint::Shadow { 
+                        offset: Vec2::new(0.0, 4.0), 
+                        blur: 20.0, 
+                        spread: 0.0,
+                        color: Color32::BLACK 
+                    }))
                 .show(ctx, |ui| {
                     ui.vertical(|ui| {
                         ui.horizontal(|ui| {
@@ -636,28 +649,15 @@ impl App for LogViewerApp {
                         ui.add_space(12.0);
 
                         ui.horizontal(|ui| {
-                            // Fixed Checkbox usage for egui 0.27
                             let mut any_changed = false;
                             
-                            let cb_style = |checked: bool, label: &str| -> RichText {
-                                if checked { RichText::new(label).color(self.theme.accent) } else { RichText::new(label).color(self.theme.text_muted) }
-                            };
-
-                            // We use a frame to simulate the pill look since Checkbox doesn't support custom styling easily
-                            if ui.add(Checkbox::new(&mut self.search.match_case, "")).on_hover_text("Match Case").clicked() { any_changed = true; }
-                            ui.label(cb_style(self.search.match_case, "Aa"));
-                            
+                            if ui.add(Checkbox::new(&mut self.search.match_case, "Aa")).on_hover_text("Match Case").clicked() { any_changed = true; }
                             ui.add_space(8.0);
-                            if ui.add(Checkbox::new(&mut self.search.whole_word, "")).on_hover_text("Whole Word").clicked() { any_changed = true; }
-                            ui.label(cb_style(self.search.whole_word, "\\b"));
-
+                            if ui.add(Checkbox::new(&mut self.search.whole_word, "\\b")).on_hover_text("Whole Word").clicked() { any_changed = true; }
                             ui.add_space(8.0);
-                            if ui.add(Checkbox::new(&mut self.search.wrap_around, "")).on_hover_text("Wrap Around").clicked() { any_changed = true; }
-                            ui.label(cb_style(self.search.wrap_around, "↻"));
-
+                            if ui.add(Checkbox::new(&mut self.search.wrap_around, "↻")).on_hover_text("Wrap Around").clicked() { any_changed = true; }
                             ui.add_space(8.0);
-                            if ui.add(Checkbox::new(&mut self.search.backward, "")).on_hover_text("Backward").clicked() { any_changed = true; }
-                            ui.label(cb_style(self.search.backward, "←"));
+                            if ui.add(Checkbox::new(&mut self.search.backward, "←")).on_hover_text("Backward").clicked() { any_changed = true; }
 
                             if any_changed { self.search.first_search = true; self.search.find_all(&self.filtered, &self.all_lines); }
                         });
@@ -666,7 +666,7 @@ impl App for LogViewerApp {
 
                         ui.horizontal(|ui| {
                             if ui.add(Button::new("▶ Next").fill(self.theme.accent).stroke(Stroke::NONE).rounding(Rounding::same(5.0)).min_size(Vec2::new(100.0, 30.0))).clicked() { self.do_find_next(); }
-                            if ui.add_enabled(!self.search.matches.is_empty(), Button::new(" Prev").fill(self.theme.bg_input).stroke(Stroke::new(1.0, self.theme.border)).rounding(Rounding::same(5.0)).min_size(Vec2::new(100.0, 30.0))).clicked() { self.do_find_prev(); }
+                            if ui.add_enabled(!self.search.matches.is_empty(), Button::new("◀ Prev").fill(self.theme.bg_input).stroke(Stroke::new(1.0, self.theme.border)).rounding(Rounding::same(5.0)).min_size(Vec2::new(100.0, 30.0))).clicked() { self.do_find_prev(); }
                             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                                 if ui.button("Find All").clicked() { self.do_find_all_with_results(); }
                             });
@@ -776,28 +776,28 @@ impl App for LogViewerApp {
                         EguiFrame::none().inner_margin(Margin::symmetric(10.0, 8.0)).show(ui, |ui| {
                             ui.spacing_mut().item_spacing = Vec2::new(8.0, 6.0);
                             ui.horizontal_wrapped(|ui| {
-                                macro_rules! cb { ($field:expr, $label:expr, $kind:expr) => {
-                                    let c = $kind.color(&self.theme);
-                                    // Use standard checkbox but wrap in a visual frame for style
-                                    let mut checked = *$field;
-                                    let resp = ui.add(Checkbox::new(&mut checked, ""));
-                                    if resp.clicked() { *$field = checked; self.recompute_nav(); }
-                                    
-                                    // Draw label next to it manually styled
-                                    ui.label(RichText::new($label).color(c).small());
-                                }}
-                                cb!(self.nav_show_error, "ERR", NavKind::Error);
-                                cb!(self.nav_show_warning, "WRN", NavKind::Warning);
-                                cb!(self.nav_show_teststart, "Start", NavKind::TestStart);
-                                cb!(self.nav_show_testend, "End", NavKind::TestEnd);
-                                cb!(self.nav_show_step, "Step", NavKind::Step);
-                                cb!(self.nav_show_teardown, "Down", NavKind::Teardown);
-                                cb!(self.nav_show_custom, "★", NavKind::Custom);
-                                cb!(self.nav_show_bookmark, "♥", NavKind::Bookmark);
+                                macro_rules! cb { 
+                                    ($field:expr, $label:expr, $kind:expr) => {{
+                                        let c = $kind.color(&self.theme);
+                                        let resp = ui.add(Checkbox::new($field, ""));
+                                        if resp.clicked() { 
+                                            self.recompute_nav(); 
+                                        }
+                                        ui.label(RichText::new($label).color(c).small());
+                                    }}
+                                }
+                                
+                                cb!(&mut self.nav_show_error, "ERR", NavKind::Error);
+                                cb!(&mut self.nav_show_warning, "WRN", NavKind::Warning);
+                                cb!(&mut self.nav_show_teststart, "Start", NavKind::TestStart);
+                                cb!(&mut self.nav_show_testend, "End", NavKind::TestEnd);
+                                cb!(&mut self.nav_show_step, "Step", NavKind::Step);
+                                cb!(&mut self.nav_show_teardown, "Down", NavKind::Teardown);
+                                cb!(&mut self.nav_show_custom, "★", NavKind::Custom);
+                                cb!(&mut self.nav_show_bookmark, "♥", NavKind::Bookmark);
                             });
                             ui.add_space(6.0);
                             let te_resp = ui.text_edit_singleline(&mut self.nav_custom_kw_buf);
-                            te_resp.labelled_by(ui.id().with("custom_kw_label")); // Avoid hint_text error on Response
                             if te_resp.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter)) { 
                                 self.nav_custom_kw = self.nav_custom_kw_buf.clone(); 
                                 self.recompute_nav(); 
@@ -1030,7 +1030,7 @@ impl App for LogViewerApp {
                     self.search.results_panel_height = ui.available_height();
                     ui.vertical(|ui| {
                         ui.horizontal(|ui| {
-                            ui.label(RichText::new(" Search Results").strong());
+                            ui.label(RichText::new("🔍 Search Results").strong());
                             ui.label(RichText::new(format!("({} matches)", self.search.matches.len())).color(self.theme.text_muted).small());
                             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                                 if ui.button("✕").clicked() { close_panel = true; }
