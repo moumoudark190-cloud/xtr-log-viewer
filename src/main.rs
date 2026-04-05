@@ -26,12 +26,12 @@ struct Theme {
 impl Theme {
     fn dark_modern() -> Self {
         Self {
-            bg_main: Color32::from_rgb(20, 22, 28),      // Deep dark blue-grey
-            bg_panel: Color32::from_rgb(26, 28, 36),     // Slightly lighter for panels
-            bg_header: Color32::from_rgb(32, 34, 44),    // Toolbar/Header
-            bg_input: Color32::from_rgb(18, 20, 26),     // Inputs
-            border: Color32::from_rgb(45, 48, 58),       // Subtle borders
-            border_active: Color32::from_rgb(90, 120, 200), // Blue accent border
+            bg_main: Color32::from_rgb(20, 22, 28),
+            bg_panel: Color32::from_rgb(26, 28, 36),
+            bg_header: Color32::from_rgb(32, 34, 44),
+            bg_input: Color32::from_rgb(18, 20, 26),
+            border: Color32::from_rgb(45, 48, 58),
+            border_active: Color32::from_rgb(90, 120, 200),
             text_main: Color32::from_rgb(220, 225, 235),
             text_muted: Color32::from_rgb(130, 135, 150),
             accent: Color32::from_rgb(88, 166, 255),
@@ -55,11 +55,13 @@ impl Theme {
         visuals.selection.bg_fill = Color32::from_rgba_unmultiplied(88, 166, 255, 80);
         visuals.hyperlink_color = self.accent;
         visuals.extreme_bg_color = self.bg_main;
+        // Fix shadow issue: use standard shadow or manual rect drawing
+        visuals.popup_shadow = egui::epaint::Shadow { offset: Vec2::new(0.0, 4.0), blur: 20.0, color: Color32::BLACK }; 
         ctx.set_visuals(visuals);
     }
 }
 
-// ── Data Structures (Unchanged Logic, kept for compilation) ────────────────
+// ── Data Structures ────────────────────────────────────────────────────────
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum Level { Error, Warning, Info, Debug, Trace }
 impl Level {
@@ -79,7 +81,7 @@ impl Level {
     fn color(&self, t: &Theme) -> Color32 {
         match self { Self::Error => t.danger, Self::Warning => t.warning, Self::Info => t.success, Self::Debug => t.info, Self::Trace => t.text_muted }
     }
-    fn row_bg(&self, t: &Theme) -> Option<Color32> {
+    fn row_bg(&self, _t: &Theme) -> Option<Color32> {
         match self {
             Self::Error => Some(Color32::from_rgba_unmultiplied(235, 85, 85, 15)),
             Self::Warning => Some(Color32::from_rgba_unmultiplied(230, 190, 70, 10)),
@@ -440,11 +442,10 @@ fn icon_btn(ui: &mut egui::Ui, icon: &str, tooltip: &str, active: bool, theme: &
     let stroke = if active { Stroke::new(1.0, theme.border_active) } else { Stroke::new(1.0, theme.border) };
     let fill = if active { Color32::from_rgba_unmultiplied(88, 166, 255, 20) } else { Color32::TRANSPARENT };
     
-    Button::new(RichText::new(icon).font(FontId::proportional(14.0)).color(color))
+    ui.add(Button::new(RichText::new(icon).font(FontId::proportional(14.0)).color(color))
         .fill(fill).stroke(stroke).rounding(Rounding::same(6.0))
-        .min_size(Vec2::new(32.0, 28.0))
+        .min_size(Vec2::new(32.0, 28.0)))
         .on_hover_text(tooltip)
-        .ui(ui)
         .clicked()
 }
 
@@ -467,7 +468,6 @@ impl App for LogViewerApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut Frame) {
         self.theme.apply_visuals(ctx);
         
-        // Title
         if let Some(ref path) = self.current_file {
             let name = path.file_name().unwrap_or_default().to_string_lossy();
             ctx.send_viewport_cmd(egui::ViewportCommand::Title(format!("{} — XTR Log Viewer", name)));
@@ -475,7 +475,6 @@ impl App for LogViewerApp {
             ctx.send_viewport_cmd(egui::ViewportCommand::Title("XTR Log Viewer".to_string()));
         }
 
-        // Input Handling
         ctx.input(|i| {
             self.drag_hover = !i.raw.hovered_files.is_empty();
             for d in &i.raw.dropped_files {
@@ -496,41 +495,30 @@ impl App for LogViewerApp {
             if i.key_pressed(Key::F3) { if i.modifiers.shift { self.do_find_prev(); } else { self.do_find_next(); } }
         });
 
-        // ── Top Bar (Menu + Toolbar) ────────────────────────────────────────
+        // ── Top Bar ─────────────────────────────────────────────────────────
         egui::TopBottomPanel::top("top_bar")
             .exact_height(56.0)
             .frame(EguiFrame::none().fill(self.theme.bg_header).stroke(Stroke::new(1.0, self.theme.border)))
             .show(ctx, |ui| {
                 ui.vertical(|ui| {
-                    // Menu Row
                     ui.horizontal(|ui| {
                         ui.spacing_mut().item_spacing.x = 12.0;
                         ui.add_space(12.0);
-                        
-                        // File Menu
                         ui.menu_button(RichText::new("File").font(FontId::proportional(12.0)), |ui| {
                             ui.set_min_width(180.0);
-                            if ui.button("📂 Open...").clicked() { self.open_file_dialog(); ui.close_menu(); }
+                            if ui.button(" Open...").clicked() { self.open_file_dialog(); ui.close_menu(); }
                             if ui.button("🔄 Reload").clicked() { if let Some(p) = self.current_file.clone() { self.load_file(&p); } ui.close_menu(); }
                             ui.separator();
                             if ui.button("💾 Export Filtered").clicked() { self.export_filtered(); ui.close_menu(); }
-                            if ui.button("🗑 Clear").clicked() { self.clear_file(); ui.close_menu(); }
+                            if ui.button(" Clear").clicked() { self.clear_file(); ui.close_menu(); }
                         });
-                        
                         ui.menu_button(RichText::new("Help").font(FontId::proportional(12.0)), |ui| {
-                            ui.label("Ctrl+O: Open");
-                            ui.label("Ctrl+F: Find");
-                            ui.label("Ctrl+N: Navigation");
+                            ui.label("Ctrl+O: Open"); ui.label("Ctrl+F: Find"); ui.label("Ctrl+N: Navigation");
                         });
-
                         ui.add_space(20.0);
-                        // Status Text
                         ui.label(RichText::new(&self.status).font(FontId::monospace(10.0)).color(self.theme.text_muted));
                     });
-
                     ui.add(Separator::default().spacing(6.0));
-
-                    // Toolbar Row
                     ui.horizontal(|ui| {
                         ui.spacing_mut().item_spacing.x = 8.0;
                         ui.add_space(12.0);
@@ -587,40 +575,35 @@ impl App for LogViewerApp {
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                             ui.spacing_mut().item_spacing.x = 6.0;
                             
-                            // Font Size
                             if icon_btn(ui, "A-", "Smaller Font", false, &self.theme) { self.font_size = (self.font_size - 1.0).max(9.0); self.row_height = self.font_size + 9.0; }
                             if icon_btn(ui, "A+", "Larger Font", false, &self.theme) { self.font_size = (self.font_size + 1.0).min(20.0); self.row_height = self.font_size + 9.0; }
                             
                             ui.add(Separator::default().vertical().spacing(6.0));
 
-                            // Wrap Toggle
                             if icon_btn(ui, if self.wrap_lines { "↩" } else { "→" }, "Toggle Line Wrap", self.wrap_lines, &self.theme) { self.wrap_lines = !self.wrap_lines; }
                             
-                            // Nav Toggle
                             let nav_count = self.nav_entries.len();
                             let nav_label = if nav_count > 0 { format!("Nav ({})", nav_count) } else { "Nav".to_string() };
                             if ui.add(Button::new(RichText::new(nav_label).font(FontId::proportional(11.0)))
                                 .fill(if self.nav_open { Color32::from_rgba_unmultiplied(88, 166, 255, 20) } else { Color32::TRANSPARENT })
                                 .stroke(Stroke::new(1.0, if self.nav_open { self.theme.border_active } else { self.theme.border }))
                                 .rounding(Rounding::same(6.0))
-                                .min_size(Vec2::new(60.0, 28.0))
-                                .on_hover_text("Toggle Navigation Panel")).clicked() {
+                                .min_size(Vec2::new(60.0, 28.0)))
+                                .on_hover_text("Toggle Navigation Panel").clicked() {
                                 self.nav_open = !self.nav_open;
                             }
 
-                            // Find Dialog Button
-                            if icon_btn(ui, "⌕", "Find Dialog (Ctrl+F)", self.find_dialog_open, &self.theme) { self.find_dialog_open = true; }
+                            if icon_btn(ui, "", "Find Dialog (Ctrl+F)", self.find_dialog_open, &self.theme) { self.find_dialog_open = true; }
                             
-                            // Open File
                             if self.all_lines.is_empty() {
-                                if ui.add(Button::new(RichText::new("📂 Open File").strong().color(self.theme.bg_main)).fill(self.theme.accent).stroke(Stroke::NONE).rounding(Rounding::same(6.0)).min_size(Vec2::new(0.0, 28.0))).clicked() { self.open_file_dialog(); }
+                                if ui.add(Button::new(RichText::new(" Open File").strong().color(self.theme.bg_main)).fill(self.theme.accent).stroke(Stroke::NONE).rounding(Rounding::same(6.0)).min_size(Vec2::new(0.0, 28.0))).clicked() { self.open_file_dialog(); }
                             }
                         });
                     });
                 });
             });
 
-        // ── Find Dialog ─────────────────────────────────────────────────────
+        // ── Find Dialog ────────────────────────────────────────────────────
         if self.find_dialog_open {
             let screen = ctx.screen_rect();
             let dialog_w = 480.0;
@@ -634,10 +617,9 @@ impl App for LogViewerApp {
                 .collapsible(false)
                 .resizable(false)
                 .title_bar(false)
-                .frame(EguiFrame::none().fill(self.theme.bg_panel).stroke(Stroke::new(1.0, self.theme.border)).rounding(Rounding::same(10.0)).shadow(egui::epaint::Shadow::dark_large(20)))
+                .frame(EguiFrame::none().fill(self.theme.bg_panel).stroke(Stroke::new(1.0, self.theme.border)).rounding(Rounding::same(10.0)).shadow(egui::epaint::Shadow { offset: Vec2::new(0.0, 4.0), blur: 20.0, color: Color32::BLACK }))
                 .show(ctx, |ui| {
                     ui.vertical(|ui| {
-                        // Header
                         ui.horizontal(|ui| {
                             ui.label(RichText::new("⌕ Find").strong().size(14.0));
                             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
@@ -646,7 +628,6 @@ impl App for LogViewerApp {
                         });
                         ui.add(Separator::default().spacing(10.0));
 
-                        // Input
                         let te = ui.add(TextEdit::singleline(&mut self.search.find_what)
                             .hint_text("Search...").font(FontId::monospace(13.0)).desired_width(f32::INFINITY));
                         if te.changed() { self.search.first_search = true; self.search.find_all(&self.filtered, &self.all_lines); }
@@ -654,17 +635,35 @@ impl App for LogViewerApp {
                         
                         ui.add_space(12.0);
 
-                        // Options
                         ui.horizontal(|ui| {
-                            ui.add(Checkbox::without_text(&mut self.search.match_case).label_text("Aa"));
-                            ui.add(Checkbox::without_text(&mut self.search.whole_word).label_text("\\b"));
-                            ui.add(Checkbox::without_text(&mut self.search.wrap_around).label_text("↻"));
-                            ui.add(Checkbox::without_text(&mut self.search.backward).label_text("←"));
+                            // Fixed Checkbox usage for egui 0.27
+                            let mut any_changed = false;
+                            
+                            let cb_style = |checked: bool, label: &str| -> RichText {
+                                if checked { RichText::new(label).color(self.theme.accent) } else { RichText::new(label).color(self.theme.text_muted) }
+                            };
+
+                            // We use a frame to simulate the pill look since Checkbox doesn't support custom styling easily
+                            if ui.add(Checkbox::new(&mut self.search.match_case, "")).on_hover_text("Match Case").clicked() { any_changed = true; }
+                            ui.label(cb_style(self.search.match_case, "Aa"));
+                            
+                            ui.add_space(8.0);
+                            if ui.add(Checkbox::new(&mut self.search.whole_word, "")).on_hover_text("Whole Word").clicked() { any_changed = true; }
+                            ui.label(cb_style(self.search.whole_word, "\\b"));
+
+                            ui.add_space(8.0);
+                            if ui.add(Checkbox::new(&mut self.search.wrap_around, "")).on_hover_text("Wrap Around").clicked() { any_changed = true; }
+                            ui.label(cb_style(self.search.wrap_around, "↻"));
+
+                            ui.add_space(8.0);
+                            if ui.add(Checkbox::new(&mut self.search.backward, "")).on_hover_text("Backward").clicked() { any_changed = true; }
+                            ui.label(cb_style(self.search.backward, "←"));
+
+                            if any_changed { self.search.first_search = true; self.search.find_all(&self.filtered, &self.all_lines); }
                         });
 
                         ui.add_space(12.0);
 
-                        // Buttons
                         ui.horizontal(|ui| {
                             if ui.add(Button::new("▶ Next").fill(self.theme.accent).stroke(Stroke::NONE).rounding(Rounding::same(5.0)).min_size(Vec2::new(100.0, 30.0))).clicked() { self.do_find_next(); }
                             if ui.add_enabled(!self.search.matches.is_empty(), Button::new(" Prev").fill(self.theme.bg_input).stroke(Stroke::new(1.0, self.theme.border)).rounding(Rounding::same(5.0)).min_size(Vec2::new(100.0, 30.0))).clicked() { self.do_find_prev(); }
@@ -684,7 +683,7 @@ impl App for LogViewerApp {
                 });
         }
 
-        // ── Minimap ─────────────────────────────────────────────────────────
+        // ─ Minimap ────────────────────────────────────────────────────────
         if !self.all_lines.is_empty() {
             let n_filt = self.filtered.len();
             let row_h = self.row_height;
@@ -712,7 +711,6 @@ impl App for LogViewerApp {
                     
                     let (bx0, bx1, by0, ah) = (r.min.x + 4.0, r.max.x - 4.0, r.min.y, r.height());
                     
-                    // Draw minimap pixels
                     for py in 0..ah as usize {
                         let i0 = ((py as f32 * n_filt as f32 / ah) as usize).min(n_filt - 1);
                         let i1 = (((py + 1) as f32 * n_filt as f32 / ah) as usize).min(n_filt - 1).max(i0);
@@ -726,7 +724,6 @@ impl App for LogViewerApp {
                         painter.rect_filled(egui::Rect::from_min_max(egui::pos2(bx0, y0), egui::pos2(bx1, y0 + 1.5)), Rounding::ZERO, MM[dom]);
                     }
 
-                    // Viewport indicator
                     let total_h = n_filt as f32 * row_h;
                     if total_h > 0.0 && viewport_h > 0.0 {
                         let vt = (scroll_off / total_h).clamp(0.0, 1.0);
@@ -767,7 +764,6 @@ impl App for LogViewerApp {
                     ui.vertical(|ui| {
                         ui.spacing_mut().item_spacing = Vec2::new(0.0, 0.0);
                         
-                        // Header
                         EguiFrame::group(&ui.style()).fill(self.theme.bg_header).inner_margin(Margin::symmetric(10.0, 8.0)).show(ui, |ui| {
                             ui.horizontal(|ui| {
                                 ui.label(RichText::new("NAVIGATION").strong().small().color(self.theme.text_muted));
@@ -777,13 +773,18 @@ impl App for LogViewerApp {
                             });
                         });
 
-                        // Filters
                         EguiFrame::none().inner_margin(Margin::symmetric(10.0, 8.0)).show(ui, |ui| {
                             ui.spacing_mut().item_spacing = Vec2::new(8.0, 6.0);
                             ui.horizontal_wrapped(|ui| {
                                 macro_rules! cb { ($field:expr, $label:expr, $kind:expr) => {
                                     let c = $kind.color(&self.theme);
-                                    ui.add(Checkbox::without_text($field).label_text(RichText::new($label).color(c).small()));
+                                    // Use standard checkbox but wrap in a visual frame for style
+                                    let mut checked = *$field;
+                                    let resp = ui.add(Checkbox::new(&mut checked, ""));
+                                    if resp.clicked() { *$field = checked; self.recompute_nav(); }
+                                    
+                                    // Draw label next to it manually styled
+                                    ui.label(RichText::new($label).color(c).small());
                                 }}
                                 cb!(self.nav_show_error, "ERR", NavKind::Error);
                                 cb!(self.nav_show_warning, "WRN", NavKind::Warning);
@@ -795,13 +796,20 @@ impl App for LogViewerApp {
                                 cb!(self.nav_show_bookmark, "♥", NavKind::Bookmark);
                             });
                             ui.add_space(6.0);
-                            ui.text_edit_singleline(&mut self.nav_custom_kw_buf).hint_text("Custom keyword...");
-                            if ui.button("Update Custom").clicked() { self.nav_custom_kw = self.nav_custom_kw_buf.clone(); self.recompute_nav(); }
+                            let te_resp = ui.text_edit_singleline(&mut self.nav_custom_kw_buf);
+                            te_resp.labelled_by(ui.id().with("custom_kw_label")); // Avoid hint_text error on Response
+                            if te_resp.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter)) { 
+                                self.nav_custom_kw = self.nav_custom_kw_buf.clone(); 
+                                self.recompute_nav(); 
+                            }
+                            if ui.button("Update Custom").clicked() { 
+                                self.nav_custom_kw = self.nav_custom_kw_buf.clone(); 
+                                self.recompute_nav(); 
+                            }
                         });
 
                         ui.add(Separator::default().spacing(0.0));
 
-                        // List
                         ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {
                             ui.spacing_mut().item_spacing = Vec2::ZERO;
                             if visible_data.is_empty() {
@@ -812,19 +820,19 @@ impl App for LogViewerApp {
                                     let c = kind.color(&self.theme);
                                     let bg = if is_sel { Color32::from_rgba_unmultiplied(88, 166, 255, 25) } else { Color32::TRANSPARENT };
                                     
-                                    let resp = ui.allocate_exact_size(Vec2::new(ui.available_width(), 32.0), Sense::click());
-                                    if ui.is_rect_visible(resp.rect) {
-                                        ui.painter().rect_filled(resp.rect, Rounding::ZERO, bg);
-                                        ui.painter().rect_filled(egui::Rect::from_min_size(resp.rect.min, Vec2::new(3.0, 32.0)), Rounding::ZERO, c);
+                                    let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 32.0), Sense::click());
+                                    if ui.is_rect_visible(rect) {
+                                        ui.painter().rect_filled(rect, Rounding::ZERO, bg);
+                                        ui.painter().rect_filled(egui::Rect::from_min_size(rect.min, Vec2::new(3.0, 32.0)), Rounding::ZERO, c);
                                         
-                                        let x = resp.rect.min.x + 10.0;
-                                        let y = resp.rect.center().y;
+                                        let x = rect.min.x + 10.0;
+                                        let y = rect.center().y;
                                         ui.painter().text(egui::pos2(x, y - 6.0), Align2::LEFT_BOTTOM, kind.short_label(), FontId::monospace(9.0), c);
                                         ui.painter().text(egui::pos2(x + 30.0, y - 6.0), Align2::LEFT_BOTTOM, format!("Line {}", line_num), FontId::monospace(9.0), self.theme.text_muted);
                                         ui.painter().text(egui::pos2(x, y + 4.0), Align2::LEFT_TOP, label.as_str(), FontId::proportional(11.0), self.theme.text_main);
                                     }
-                                    if resp.clicked() { jump = Some(*row_idx); }
-                                    if resp.double_clicked() { jump = Some(*row_idx); self.nav_open = false; }
+                                    if response.clicked() { jump = Some(*row_idx); }
+                                    if response.double_clicked() { jump = Some(*row_idx); self.nav_open = false; }
                                 }
                             }
                         });
@@ -904,7 +912,6 @@ impl App for LogViewerApp {
                         let (row_rect, resp) = ui.allocate_exact_size(Vec2::new(ui.available_width(), row_h), Sense::click());
                         if !ui.is_rect_visible(row_rect) { continue; }
                         
-                        // Backgrounds
                         let bg = if is_sel { Color32::from_rgba_unmultiplied(88, 166, 255, 40) }
                             else if is_current_find { Color32::from_rgba_unmultiplied(255, 213, 79, 40) }
                             else if is_find_match { Color32::from_rgba_unmultiplied(255, 213, 79, 15) }
@@ -914,14 +921,12 @@ impl App for LogViewerApp {
                         
                         if bg != Color32::TRANSPARENT { ui.painter().rect_filled(row_rect, Rounding::ZERO, bg); }
                         
-                        // Indicators
                         if is_bookmarked { ui.painter().rect_filled(egui::Rect::from_min_size(row_rect.min, Vec2::new(3.0, row_h)), Rounding::ZERO, Color32::from_rgb(255, 140, 200)); }
                         if matches!(line.level, Level::Error | Level::Warning) {
                             let x_off = if is_bookmarked { 3.0 } else { 0.0 };
                             ui.painter().rect_filled(egui::Rect::from_min_size(egui::pos2(row_rect.min.x + x_off, row_rect.min.y), Vec2::new(2.0, row_h)), Rounding::ZERO, line.level.color(&self.theme));
                         }
 
-                        // Content
                         let p = ui.painter();
                         let y = row_rect.center().y;
                         let fid = FontId::monospace(font_sz);
@@ -1013,7 +1018,7 @@ impl App for LogViewerApp {
             }
         }
         
-        // ── Search Results Panel ────────────────────────────────────────────
+        // ─ Search Results Panel ────────────────────────────────────────────
         if self.search.results_panel_open && !self.search.matches.is_empty() {
             let mut close_panel = false;
             let mut jump_to: Option<usize> = None;
@@ -1024,7 +1029,6 @@ impl App for LogViewerApp {
                 .show(ctx, |ui| {
                     self.search.results_panel_height = ui.available_height();
                     ui.vertical(|ui| {
-                        // Header
                         ui.horizontal(|ui| {
                             ui.label(RichText::new(" Search Results").strong());
                             ui.label(RichText::new(format!("({} matches)", self.search.matches.len())).color(self.theme.text_muted).small());
@@ -1099,7 +1103,7 @@ impl App for LogViewerApp {
 fn main() -> eframe::Result<()> {
     let opts = NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_title("Log Viewer")
+            .with_title("XTR Log Viewer")
             .with_inner_size([1440.0, 900.0])
             .with_min_inner_size([800.0, 400.0])
             .with_drag_and_drop(true),
