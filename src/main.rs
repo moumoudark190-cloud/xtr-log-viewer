@@ -791,7 +791,9 @@ impl App for LogViewerApp {
                             }
                             if let Some(path) = &self.current_file {
                                 if ui.add(menu_item("🔄", "Reload current file", "")).clicked() {
-                                    self.load_file(path); ui.close_menu();
+                                    let path = path.clone(); // fix borrow
+                                    self.load_file(&path);
+                                    ui.close_menu();
                                 }
                             }
                             ui.separator();
@@ -877,24 +879,27 @@ impl App for LogViewerApp {
                         let filter_active = !self.filter_text.is_empty();
 
                         let (rect, _) = ui.allocate_exact_size(Vec2::new(search_width, search_height), Sense::hover());
-                        let painter = ui.painter();
 
-                        let fill = Color32::from_rgb(10, 13, 20);
-                        let border = if filter_active { COL_ACCENT } else { COL_BORDER_HL };
-                        painter.rect(rect, Rounding::same(10.0), fill, Stroke::new(1.5, border));
+                        // Paint background + icon (scoped painter to avoid borrow conflict)
+                        {
+                            let painter = ui.painter();
+                            let fill = Color32::from_rgb(10, 13, 20);
+                            let border = if filter_active { COL_ACCENT } else { COL_BORDER_HL };
+                            painter.rect(rect, Rounding::same(10.0), fill, Stroke::new(1.5, border));
 
-                        if filter_active {
-                            painter.rect_stroke(rect.shrink(1.0), Rounding::same(9.0),
-                                Stroke::new(1.0, Color32::from_rgba_unmultiplied(88, 166, 255, 40)));
+                            if filter_active {
+                                painter.rect_stroke(rect.shrink(1.0), Rounding::same(9.0),
+                                    Stroke::new(1.0, Color32::from_rgba_unmultiplied(88, 166, 255, 40)));
+                            }
+
+                            painter.text(
+                                egui::pos2(rect.min.x + 14.0, rect.center().y),
+                                Align2::LEFT_CENTER,
+                                "⌕",
+                                FontId::proportional(17.0),
+                                if filter_active { COL_ACCENT } else { COL_FAINT },
+                            );
                         }
-
-                        painter.text(
-                            egui::pos2(rect.min.x + 14.0, rect.center().y),
-                            Align2::LEFT_CENTER,
-                            "⌕",
-                            FontId::proportional(17.0),
-                            if filter_active { COL_ACCENT } else { COL_FAINT },
-                        );
 
                         let text_rect = egui::Rect::from_min_max(
                             egui::pos2(rect.min.x + 38.0, rect.min.y + 4.0),
@@ -907,6 +912,7 @@ impl App for LogViewerApp {
                         );
                         if te_resp.changed() { self.apply_filters(); }
 
+                        // Clear button (new painter after mutable ui.put)
                         if filter_active {
                             let clear_rect = egui::Rect::from_center_size(
                                 egui::pos2(rect.max.x - 18.0, rect.center().y),
@@ -914,6 +920,7 @@ impl App for LogViewerApp {
                             );
                             let clear_resp = ui.interact(clear_rect, egui::Id::new("clear_search"), Sense::click());
                             let clear_col = if clear_resp.hovered() { COL_TEXT } else { COL_MUTED };
+                            let painter = ui.painter();
                             painter.text(clear_rect.center(), Align2::CENTER_CENTER, "✕",
                                 FontId::proportional(13.0), clear_col);
                             if clear_resp.clicked() {
@@ -931,19 +938,24 @@ impl App for LogViewerApp {
                             } else {
                                 RichText::new(trunc(&self.module_filter, 22)).color(COL_TEXT)
                             };
+                            let mut new_filter = None;
                             egui::ComboBox::from_id_source("mod_filter")
                                 .width(160.0)
                                 .selected_text(label.font(FontId::proportional(12.0)))
                                 .show_ui(ui, |ui| {
                                     if ui.selectable_label(self.module_filter.is_empty(), "All modules").clicked() {
-                                        self.module_filter.clear(); self.apply_filters();
+                                        new_filter = Some(String::new());
                                     }
                                     for m in &self.modules {
                                         if ui.selectable_label(self.module_filter == *m, trunc(m, 30)).clicked() {
-                                            self.module_filter = m.clone(); self.apply_filters();
+                                            new_filter = Some(m.clone());
                                         }
                                     }
                                 });
+                            if let Some(f) = new_filter {
+                                self.module_filter = f;
+                                self.apply_filters();
+                            }
                         }
 
                         ui.add(egui::Separator::default().vertical().spacing(12.0));
@@ -1577,7 +1589,6 @@ impl LogViewerApp {
 
                         ui.add_space(16.0);
 
-                        // ── Advanced search options (replaced wrapper buttons with native checkboxes) ──
                         ui.horizontal(|ui| {
                             ui.spacing_mut().item_spacing.x = 18.0;
                             let mut changed = false;
