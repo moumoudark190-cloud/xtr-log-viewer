@@ -247,19 +247,16 @@ impl SearchState {
                 line.raw.to_lowercase()
             };
             
-            // Find all occurrences in this line
             let mut start = 0;
             while let Some(pos) = hay[start..].find(&needle) {
                 let abs_pos = start + pos;
                 let match_end = abs_pos + needle.len();
                 
-                // Check whole word if needed
                 if self.whole_word && !self.matches_whole_word(&hay, &needle) {
                     start = abs_pos + 1;
                     continue;
                 }
                 
-                // Extract context
                 let before_start = abs_pos.saturating_sub(30);
                 let after_end = (match_end + 30).min(line.raw.len());
                 
@@ -555,6 +552,241 @@ mod colors {
 }
 
 use colors::*;
+
+// ─── Styled UI Helper Functions (Free Functions) ─────────────────────────────
+
+fn styled_text_input(ui: &mut egui::Ui, id: &str, text: &mut String, hint: &str, width: f32) -> egui::Response {
+    egui::Frame::none()
+        .fill(INPUT_BG)
+        .stroke(Stroke::new(1.0, INPUT_BORDER))
+        .rounding(Rounding::same(6.0))
+        .inner_margin(egui::Margin::symmetric(10.0, 6.0))
+        .show(ui, |ui| {
+            ui.add(
+                TextEdit::singleline(text)
+                    .id(egui::Id::new(id))
+                    .hint_text(RichText::new(hint).color(TEXT_MUTED))
+                    .desired_width(width)
+                    .font(FontId::monospace(13.0))
+                    .frame(false)
+            )
+        }).inner
+}
+
+fn styled_checkbox(ui: &mut egui::Ui, checked: &mut bool, label: &str, icon: &str) -> bool {
+    let old = *checked;
+    
+    ui.horizontal(|ui| {
+        let (rect, response) = ui.allocate_exact_size(Vec2::new(20.0, 20.0), Sense::click());
+        
+        let painter = ui.painter();
+        let rounding = Rounding::same(4.0);
+        
+        let (bg, border) = if *checked {
+            (ACCENT, ACCENT)
+        } else if response.hovered() {
+            (Color32::from_rgb(40, 48, 60), TEXT_SECONDARY)
+        } else {
+            (Color32::from_rgb(30, 36, 45), INPUT_BORDER)
+        };
+        
+        painter.rect(rect, rounding, bg, Stroke::new(1.0, border));
+        
+        if *checked {
+            painter.text(
+                rect.center(),
+                Align2::CENTER_CENTER,
+                "✓",
+                FontId::proportional(12.0),
+                Color32::WHITE
+            );
+        }
+        
+        if response.clicked() {
+            *checked = !*checked;
+        }
+        
+        ui.add_space(8.0);
+        
+        ui.label(
+            RichText::new(format!("{} {}", icon, label))
+                .font(FontId::proportional(12.0))
+                .color(if *checked { TEXT_PRIMARY } else { TEXT_SECONDARY })
+        );
+    });
+    
+    *checked != old
+}
+
+fn styled_radio(ui: &mut egui::Ui, selected: bool, label: &str, hint: &str) -> bool {
+    let mut clicked = false;
+    
+    ui.horizontal(|ui| {
+        let (rect, response) = ui.allocate_exact_size(Vec2::new(18.0, 18.0), Sense::click());
+        
+        let painter = ui.painter();
+        let center = rect.center();
+        let radius = 8.0;
+        
+        let (bg, border) = if selected {
+            (ACCENT, ACCENT)
+        } else if response.hovered() {
+            (Color32::from_rgb(40, 48, 60), TEXT_SECONDARY)
+        } else {
+            (Color32::TRANSPARENT, INPUT_BORDER)
+        };
+        
+        painter.circle(center, radius, bg, Stroke::new(1.5, border));
+        
+        if selected {
+            painter.circle_filled(center, 4.0, Color32::WHITE);
+        }
+        
+        if response.clicked() {
+            clicked = true;
+        }
+        
+        ui.add_space(8.0);
+        
+        ui.vertical(|ui| {
+            ui.spacing_mut().item_spacing.y = 0.0;
+            ui.label(
+                RichText::new(label)
+                    .font(FontId::proportional(12.0))
+                    .color(if selected { TEXT_PRIMARY } else { TEXT_SECONDARY })
+            );
+            ui.label(
+                RichText::new(hint)
+                    .font(FontId::proportional(10.0))
+                    .color(TEXT_MUTED)
+            );
+        });
+    });
+    
+    clicked
+}
+
+fn primary_button(ui: &mut egui::Ui, label: &str, enabled: bool) -> bool {
+    let (rect, response) = ui.allocate_exact_size(Vec2::new(160.0, 36.0), Sense::click());
+    
+    let painter = ui.painter();
+    
+    let bg = if !enabled {
+        Color32::from_rgb(40, 45, 55)
+    } else if response.is_pointer_button_down_on() {
+        Color32::from_rgb(25, 90, 190)
+    } else if response.hovered() {
+        BUTTON_PRIMARY_HOVER
+    } else {
+        BUTTON_PRIMARY
+    };
+    
+    painter.rect_filled(rect, Rounding::same(8.0), bg);
+    
+    painter.text(
+        rect.center(),
+        Align2::CENTER_CENTER,
+        label,
+        FontId::proportional(13.0),
+        if enabled { Color32::WHITE } else { TEXT_MUTED }
+    );
+    
+    enabled && response.clicked()
+}
+
+fn secondary_button(ui: &mut egui::Ui, label: &str, enabled: bool) -> bool {
+    let (rect, response) = ui.allocate_exact_size(Vec2::new(160.0, 32.0), Sense::click());
+    
+    let painter = ui.painter();
+    
+    let (bg, border) = if !enabled {
+        (Color32::from_rgb(28, 33, 40), Color32::from_rgb(40, 45, 52))
+    } else if response.hovered() {
+        (BUTTON_HOVER, TEXT_SECONDARY)
+    } else {
+        (BUTTON_BG, DIALOG_BORDER)
+    };
+    
+    painter.rect(rect, Rounding::same(6.0), bg, Stroke::new(1.0, border));
+    
+    painter.text(
+        rect.center(),
+        Align2::CENTER_CENTER,
+        label,
+        FontId::proportional(12.0),
+        if enabled { TEXT_PRIMARY } else { TEXT_MUTED }
+    );
+    
+    enabled && response.clicked()
+}
+
+fn accent_button(ui: &mut egui::Ui, label: &str, enabled: bool) -> bool {
+    let (rect, response) = ui.allocate_exact_size(Vec2::new(160.0, 36.0), Sense::click());
+    
+    let painter = ui.painter();
+    
+    let bg = if response.hovered() {
+        Color32::from_rgba_unmultiplied(88, 166, 255, 40)
+    } else {
+        Color32::from_rgba_unmultiplied(88, 166, 255, 20)
+    };
+    
+    painter.rect(rect, Rounding::same(8.0), bg, Stroke::new(1.5, ACCENT));
+    
+    painter.text(
+        rect.center(),
+        Align2::CENTER_CENTER,
+        label,
+        FontId::proportional(13.0),
+        ACCENT
+    );
+    
+    enabled && response.clicked()
+}
+
+fn render_match_context(painter: &egui::Painter, pos: egui::Pos2, mat: &SearchMatch, max_width: f32) {
+    let font = FontId::monospace(11.0);
+    
+    let before = if mat.context_before.len() > 20 {
+        format!("…{}", &mat.context_before[mat.context_before.len()-20..])
+    } else {
+        mat.context_before.clone()
+    };
+    
+    let after = if mat.context_after.len() > 30 {
+        format!("{}…", &mat.context_after[..30])
+    } else {
+        mat.context_after.clone()
+    };
+    
+    let match_text = if mat.match_text.len() > 50 {
+        format!("{}…", &mat.match_text[..49])
+    } else {
+        mat.match_text.clone()
+    };
+    
+    let before_width = painter.layout_no_wrap(before.clone(), font.clone(), TEXT_SECONDARY).size().x;
+    let match_width = painter.layout_no_wrap(match_text.clone(), font.clone(), MATCH_HIGHLIGHT).size().x;
+    
+    let mut x = pos.x;
+    
+    if !before.is_empty() {
+        painter.text(egui::pos2(x, pos.y), Align2::LEFT_CENTER, &before, font.clone(), TEXT_SECONDARY);
+        x += before_width;
+    }
+    
+    let match_rect = egui::Rect::from_min_size(
+        egui::pos2(x - 2.0, pos.y - 8.0),
+        Vec2::new(match_width + 4.0, 16.0)
+    );
+    painter.rect_filled(match_rect, Rounding::same(2.0), Color32::from_rgba_unmultiplied(255, 213, 79, 50));
+    painter.text(egui::pos2(x, pos.y), Align2::LEFT_CENTER, &match_text, font.clone(), MATCH_HIGHLIGHT);
+    x += match_width;
+    
+    if !after.is_empty() && x < pos.x + max_width - 50.0 {
+        painter.text(egui::pos2(x, pos.y), Align2::LEFT_CENTER, &after, font.clone(), TEXT_SECONDARY);
+    }
+}
 
 // ─── App ─────────────────────────────────────────────────────────────────────
 
@@ -954,240 +1186,6 @@ impl LogViewerApp {
                 Err(e) => self.status = format!("Export failed: {e}"),
             }
         }
-    }
-    
-    fn render_match_context(&self, painter: &egui::Painter, pos: egui::Pos2, mat: &SearchMatch, max_width: f32) {
-        let font = FontId::monospace(11.0);
-        
-        let before = if mat.context_before.len() > 20 {
-            format!("…{}", &mat.context_before[mat.context_before.len()-20..])
-        } else {
-            mat.context_before.clone()
-        };
-        
-        let after = if mat.context_after.len() > 30 {
-            format!("{}…", &mat.context_after[..30])
-        } else {
-            mat.context_after.clone()
-        };
-        
-        let match_text = if mat.match_text.len() > 50 {
-            format!("{}…", &mat.match_text[..49])
-        } else {
-            mat.match_text.clone()
-        };
-        
-        let before_width = painter.layout_no_wrap(before.clone(), font.clone(), TEXT_SECONDARY).size().x;
-        let match_width = painter.layout_no_wrap(match_text.clone(), font.clone(), MATCH_HIGHLIGHT).size().x;
-        
-        let mut x = pos.x;
-        
-        if !before.is_empty() {
-            painter.text(egui::pos2(x, pos.y), Align2::LEFT_CENTER, &before, font.clone(), TEXT_SECONDARY);
-            x += before_width;
-        }
-        
-        let match_rect = egui::Rect::from_min_size(
-            egui::pos2(x - 2.0, pos.y - 8.0),
-            Vec2::new(match_width + 4.0, 16.0)
-        );
-        painter.rect_filled(match_rect, Rounding::same(2.0), Color32::from_rgba_unmultiplied(255, 213, 79, 50));
-        painter.text(egui::pos2(x, pos.y), Align2::LEFT_CENTER, &match_text, font.clone(), MATCH_HIGHLIGHT);
-        x += match_width;
-        
-        if !after.is_empty() && x < pos.x + max_width - 50.0 {
-            painter.text(egui::pos2(x, pos.y), Align2::LEFT_CENTER, &after, font.clone(), TEXT_SECONDARY);
-        }
-    }
-    
-    // Styled UI components
-    fn styled_text_input(&self, ui: &mut egui::Ui, id: &str, text: &mut String, hint: &str, width: f32) -> egui::Response {
-        egui::Frame::none()
-            .fill(INPUT_BG)
-            .stroke(Stroke::new(1.0, INPUT_BORDER))
-            .rounding(Rounding::same(6.0))
-            .inner_margin(egui::Margin::symmetric(10.0, 6.0))
-            .show(ui, |ui| {
-                ui.add(
-                    TextEdit::singleline(text)
-                        .id(egui::Id::new(id))
-                        .hint_text(RichText::new(hint).color(TEXT_MUTED))
-                        .desired_width(width)
-                        .font(FontId::monospace(13.0))
-                        .frame(false)
-                )
-            }).inner
-    }
-    
-    fn styled_checkbox(&self, ui: &mut egui::Ui, checked: &mut bool, label: &str, icon: &str) -> bool {
-        let old = *checked;
-        
-        ui.horizontal(|ui| {
-            let (rect, response) = ui.allocate_exact_size(Vec2::new(20.0, 20.0), Sense::click());
-            
-            let painter = ui.painter();
-            let rounding = Rounding::same(4.0);
-            
-            let (bg, border) = if *checked {
-                (ACCENT, ACCENT)
-            } else if response.hovered() {
-                (Color32::from_rgb(40, 48, 60), TEXT_SECONDARY)
-            } else {
-                (Color32::from_rgb(30, 36, 45), INPUT_BORDER)
-            };
-            
-            painter.rect(rect, rounding, bg, Stroke::new(1.0, border));
-            
-            if *checked {
-                painter.text(
-                    rect.center(),
-                    Align2::CENTER_CENTER,
-                    "✓",
-                    FontId::proportional(12.0),
-                    Color32::WHITE
-                );
-            }
-            
-            if response.clicked() {
-                *checked = !*checked;
-            }
-            
-            ui.add_space(8.0);
-            
-            ui.label(
-                RichText::new(format!("{} {}", icon, label))
-                    .font(FontId::proportional(12.0))
-                    .color(if *checked { TEXT_PRIMARY } else { TEXT_SECONDARY })
-            );
-        });
-        
-        *checked != old
-    }
-    
-    fn styled_radio(&self, ui: &mut egui::Ui, selected: bool, label: &str, hint: &str) -> bool {
-        let mut clicked = false;
-        
-        ui.horizontal(|ui| {
-            let (rect, response) = ui.allocate_exact_size(Vec2::new(18.0, 18.0), Sense::click());
-            
-            let painter = ui.painter();
-            let center = rect.center();
-            let radius = 8.0;
-            
-            let (bg, border) = if selected {
-                (ACCENT, ACCENT)
-            } else if response.hovered() {
-                (Color32::from_rgb(40, 48, 60), TEXT_SECONDARY)
-            } else {
-                (Color32::TRANSPARENT, INPUT_BORDER)
-            };
-            
-            painter.circle(center, radius, bg, Stroke::new(1.5, border));
-            
-            if selected {
-                painter.circle_filled(center, 4.0, Color32::WHITE);
-            }
-            
-            if response.clicked() {
-                clicked = true;
-            }
-            
-            ui.add_space(8.0);
-            
-            ui.vertical(|ui| {
-                ui.spacing_mut().item_spacing.y = 0.0;
-                ui.label(
-                    RichText::new(label)
-                        .font(FontId::proportional(12.0))
-                        .color(if selected { TEXT_PRIMARY } else { TEXT_SECONDARY })
-                );
-                ui.label(
-                    RichText::new(hint)
-                        .font(FontId::proportional(10.0))
-                        .color(TEXT_MUTED)
-                );
-            });
-        });
-        
-        clicked
-    }
-    
-    fn primary_button(&self, ui: &mut egui::Ui, label: &str, enabled: bool) -> bool {
-        let (rect, response) = ui.allocate_exact_size(Vec2::new(160.0, 36.0), Sense::click());
-        
-        let painter = ui.painter();
-        
-        let bg = if !enabled {
-            Color32::from_rgb(40, 45, 55)
-        } else if response.is_pointer_button_down_on() {
-            Color32::from_rgb(25, 90, 190)
-        } else if response.hovered() {
-            BUTTON_PRIMARY_HOVER
-        } else {
-            BUTTON_PRIMARY
-        };
-        
-        painter.rect_filled(rect, Rounding::same(8.0), bg);
-        
-        painter.text(
-            rect.center(),
-            Align2::CENTER_CENTER,
-            label,
-            FontId::proportional(13.0),
-            if enabled { Color32::WHITE } else { TEXT_MUTED }
-        );
-        
-        enabled && response.clicked()
-    }
-    
-    fn secondary_button(&self, ui: &mut egui::Ui, label: &str, enabled: bool) -> bool {
-        let (rect, response) = ui.allocate_exact_size(Vec2::new(160.0, 32.0), Sense::click());
-        
-        let painter = ui.painter();
-        
-        let (bg, border) = if !enabled {
-            (Color32::from_rgb(28, 33, 40), Color32::from_rgb(40, 45, 52))
-        } else if response.hovered() {
-            (BUTTON_HOVER, TEXT_SECONDARY)
-        } else {
-            (BUTTON_BG, DIALOG_BORDER)
-        };
-        
-        painter.rect(rect, Rounding::same(6.0), bg, Stroke::new(1.0, border));
-        
-        painter.text(
-            rect.center(),
-            Align2::CENTER_CENTER,
-            label,
-            FontId::proportional(12.0),
-            if enabled { TEXT_PRIMARY } else { TEXT_MUTED }
-        );
-        
-        enabled && response.clicked()
-    }
-    
-    fn accent_button(&self, ui: &mut egui::Ui, label: &str, enabled: bool) -> bool {
-        let (rect, response) = ui.allocate_exact_size(Vec2::new(160.0, 36.0), Sense::click());
-        
-        let painter = ui.painter();
-        
-        let bg = if response.hovered() {
-            Color32::from_rgba_unmultiplied(88, 166, 255, 40)
-        } else {
-            Color32::from_rgba_unmultiplied(88, 166, 255, 20)
-        };
-        
-        painter.rect(rect, Rounding::same(8.0), bg, Stroke::new(1.5, ACCENT));
-        
-        painter.text(
-            rect.center(),
-            Align2::CENTER_CENTER,
-            label,
-            FontId::proportional(13.0),
-            ACCENT
-        );
-        
-        enabled && response.clicked()
     }
 }
 
@@ -2107,7 +2105,7 @@ impl LogViewerApp {
             ui.label(RichText::new("🔍").size(14.0).color(TEXT_MUTED));
             ui.add_space(8.0);
             
-            let input = self.styled_text_input(ui, "find_in", &mut self.search.find_what, "Search for...", 380.0);
+            let input = styled_text_input(ui, "find_in", &mut self.search.find_what, "Search for...", 380.0);
             if input.changed() {
                 options_changed = true;
             }
@@ -2123,10 +2121,10 @@ impl LogViewerApp {
                 ui.set_width(280.0);
                 ui.spacing_mut().item_spacing.y = 6.0;
                 
-                options_changed |= self.styled_checkbox(ui, &mut self.search.match_case, "Match case", "Aa");
-                options_changed |= self.styled_checkbox(ui, &mut self.search.whole_word, "Whole word", "「」");
-                self.styled_checkbox(ui, &mut self.search.wrap_around, "Wrap around", "↻");
-                self.styled_checkbox(ui, &mut self.search.backward, "Search backward", "←");
+                options_changed |= styled_checkbox(ui, &mut self.search.match_case, "Match case", "Aa");
+                options_changed |= styled_checkbox(ui, &mut self.search.whole_word, "Whole word", "「」");
+                styled_checkbox(ui, &mut self.search.wrap_around, "Wrap around", "↻");
+                styled_checkbox(ui, &mut self.search.backward, "Search backward", "←");
                 
                 ui.add_space(12.0);
                 
@@ -2140,15 +2138,15 @@ impl LogViewerApp {
                     .show(ui, |ui| {
                         ui.spacing_mut().item_spacing.y = 4.0;
                         
-                        if self.styled_radio(ui, self.search.mode == SearchMode::Normal, "Normal", "Literal text matching") {
+                        if styled_radio(ui, self.search.mode == SearchMode::Normal, "Normal", "Literal text matching") {
                             self.search.mode = SearchMode::Normal;
                             options_changed = true;
                         }
-                        if self.styled_radio(ui, self.search.mode == SearchMode::Extended, "Extended", "\\n \\r \\t \\x00") {
+                        if styled_radio(ui, self.search.mode == SearchMode::Extended, "Extended", "\\n \\r \\t \\x00") {
                             self.search.mode = SearchMode::Extended;
                             options_changed = true;
                         }
-                        if self.styled_radio(ui, self.search.mode == SearchMode::Regex, "Regex", "Regular expressions") {
+                        if styled_radio(ui, self.search.mode == SearchMode::Regex, "Regex", "Regular expressions") {
                             self.search.mode = SearchMode::Regex;
                             options_changed = true;
                         }
@@ -2163,27 +2161,27 @@ impl LogViewerApp {
                 
                 let has_matches = !self.search.matches.is_empty();
                 
-                if self.primary_button(ui, "▶  Find Next", true) || should_search {
+                if primary_button(ui, "▶  Find Next", true) || should_search {
                     self.do_find_next();
                 }
                 
-                if self.secondary_button(ui, "◀  Find Previous", has_matches) {
+                if secondary_button(ui, "◀  Find Previous", has_matches) {
                     self.do_find_prev();
                 }
                 
                 ui.add_space(4.0);
                 
-                if self.secondary_button(ui, "⊕  Count All", true) {
+                if secondary_button(ui, "⊕  Count All", true) {
                     self.do_count();
                 }
                 
-                if self.accent_button(ui, "☰  Find All", true) {
+                if accent_button(ui, "☰  Find All", true) {
                     self.do_find_all_with_results();
                 }
                 
                 ui.add_space(8.0);
                 
-                if self.secondary_button(ui, "✕  Close", true) {
+                if secondary_button(ui, "✕  Close", true) {
                     self.close_find_dialog();
                 }
             });
@@ -2226,7 +2224,7 @@ impl LogViewerApp {
             ui.add_space(4.0);
             ui.label(RichText::new("🔍").size(14.0).color(TEXT_MUTED));
             ui.add_space(8.0);
-            let input = self.styled_text_input(ui, "find_in_r", &mut self.search.find_what, "Search for...", 400.0);
+            let input = styled_text_input(ui, "find_in_r", &mut self.search.find_what, "Search for...", 400.0);
             if input.changed() { options_changed = true; }
         });
         
@@ -2234,7 +2232,7 @@ impl LogViewerApp {
             ui.add_space(4.0);
             ui.label(RichText::new("↳").size(14.0).color(TEXT_MUTED));
             ui.add_space(8.0);
-            self.styled_text_input(ui, "replace_in", &mut self.search.replace_with, "Replace with...", 400.0);
+            styled_text_input(ui, "replace_in", &mut self.search.replace_with, "Replace with...", 400.0);
         });
         
         ui.add_space(8.0);
@@ -2244,9 +2242,9 @@ impl LogViewerApp {
                 ui.set_width(280.0);
                 ui.spacing_mut().item_spacing.y = 6.0;
                 
-                options_changed |= self.styled_checkbox(ui, &mut self.search.match_case, "Match case", "Aa");
-                options_changed |= self.styled_checkbox(ui, &mut self.search.whole_word, "Whole word", "「」");
-                self.styled_checkbox(ui, &mut self.search.wrap_around, "Wrap around", "↻");
+                options_changed |= styled_checkbox(ui, &mut self.search.match_case, "Match case", "Aa");
+                options_changed |= styled_checkbox(ui, &mut self.search.whole_word, "Whole word", "「」");
+                styled_checkbox(ui, &mut self.search.wrap_around, "Wrap around", "↻");
             });
             
             ui.add_space(20.0);
@@ -2255,13 +2253,13 @@ impl LogViewerApp {
                 ui.set_width(180.0);
                 ui.spacing_mut().item_spacing.y = 8.0;
                 
-                if self.primary_button(ui, "▶  Find Next", true) {
+                if primary_button(ui, "▶  Find Next", true) {
                     self.do_find_next();
                 }
                 
                 ui.add_enabled_ui(false, |ui| {
-                    self.secondary_button(ui, "↻  Replace", false);
-                    self.secondary_button(ui, "↻↻ Replace All", false);
+                    secondary_button(ui, "↻  Replace", false);
+                    secondary_button(ui, "↻↻ Replace All", false);
                 });
                 
                 ui.add_space(4.0);
@@ -2294,7 +2292,7 @@ impl LogViewerApp {
             ui.add_space(4.0);
             ui.label(RichText::new("🔖").size(14.0).color(TEXT_MUTED));
             ui.add_space(8.0);
-            let input = self.styled_text_input(ui, "mark_in", &mut self.search.find_what, "Mark lines containing...", 400.0);
+            let input = styled_text_input(ui, "mark_in", &mut self.search.find_what, "Mark lines containing...", 400.0);
             if input.changed() { options_changed = true; }
         });
         
@@ -2305,10 +2303,10 @@ impl LogViewerApp {
                 ui.set_width(280.0);
                 ui.spacing_mut().item_spacing.y = 6.0;
                 
-                options_changed |= self.styled_checkbox(ui, &mut self.search.match_case, "Match case", "Aa");
-                options_changed |= self.styled_checkbox(ui, &mut self.search.whole_word, "Whole word", "「」");
-                self.styled_checkbox(ui, &mut self.search.bookmark_matches, "Bookmark lines", "♥");
-                self.styled_checkbox(ui, &mut self.search.purge_before_mark, "Clear existing marks", "🗑");
+                options_changed |= styled_checkbox(ui, &mut self.search.match_case, "Match case", "Aa");
+                options_changed |= styled_checkbox(ui, &mut self.search.whole_word, "Whole word", "「」");
+                styled_checkbox(ui, &mut self.search.bookmark_matches, "Bookmark lines", "♥");
+                styled_checkbox(ui, &mut self.search.purge_before_mark, "Clear existing marks", "🗑");
                 
                 ui.add_space(12.0);
                 
@@ -2349,17 +2347,17 @@ impl LogViewerApp {
                 ui.set_width(180.0);
                 ui.spacing_mut().item_spacing.y = 8.0;
                 
-                if self.primary_button(ui, "🔖  Mark All", true) {
+                if primary_button(ui, "🔖  Mark All", true) {
                     self.do_mark_all();
                 }
                 
-                if self.secondary_button(ui, "🗑  Clear Marks", true) {
+                if secondary_button(ui, "🗑  Clear Marks", true) {
                     self.do_clear_marks();
                 }
                 
                 ui.add_space(4.0);
                 
-                if self.secondary_button(ui, "✕  Close", true) {
+                if secondary_button(ui, "✕  Close", true) {
                     self.close_find_dialog();
                 }
             });
@@ -2413,7 +2411,7 @@ impl LogViewerApp {
             
             ui.add_space(24.0);
             
-            if self.primary_button(ui, "📂  Select Folder...", true) {
+            if primary_button(ui, "📂  Select Folder...", true) {
                 // TODO: Implement folder selection
             }
             
@@ -2642,7 +2640,7 @@ impl LogViewerApp {
                             x += 80.0;
                             
                             let available_width = rect.max.x - x - 16.0;
-                            self.render_match_context(painter, egui::pos2(x, y), mat, available_width);
+                            render_match_context(painter, egui::pos2(x, y), mat, available_width);
                             
                             if response.clicked() {
                                 self.search.current_match_idx = idx;
@@ -2684,6 +2682,6 @@ fn main() -> eframe::Result<()> {
     eframe::run_native(
         "XTR Log Viewer",
         opts,
-        Box::new(|_cc| Ok(Box::new(LogViewerApp::default()))),
+        Box::new(|_cc| Box::new(LogViewerApp::default())),
     )
 }
