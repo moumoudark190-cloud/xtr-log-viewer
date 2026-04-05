@@ -550,18 +550,34 @@ impl App for LogViewerApp {
 
                         ui.add(Separator::default().vertical().spacing(8.0));
 
-                        // Module Filter
+                        // Module Filter - FIXED VERSION
                         if !self.modules.is_empty() {
                             let label = if self.module_filter.is_empty() { "All Modules" } else { &self.module_filter };
+                            let current_filter = self.module_filter.clone();
+                            
+                            let mut selected_module: Option<Option<String>> = None;
+                            
                             egui::ComboBox::from_id_source("mod_cb")
                                 .selected_text(RichText::new(label).font(FontId::proportional(11.0)))
                                 .width(140.0)
                                 .show_ui(ui, |ui| {
-                                    if ui.selectable_label(self.module_filter.is_empty(), "All Modules").clicked() { self.module_filter.clear(); self.apply_filters(); }
+                                    if ui.selectable_label(current_filter.is_empty(), "All Modules").clicked() { 
+                                        selected_module = Some(None);
+                                    }
                                     for m in &self.modules {
-                                        if ui.selectable_label(self.module_filter == *m, m).clicked() { self.module_filter = m.clone(); self.apply_filters(); }
+                                        if ui.selectable_label(&current_filter == m, m).clicked() { 
+                                            selected_module = Some(Some(m.clone()));
+                                        }
                                     }
                                 });
+                            
+                            if let Some(selection) = selected_module {
+                                match selection {
+                                    None => self.module_filter.clear(),
+                                    Some(m) => self.module_filter = m,
+                                }
+                                self.apply_filters();
+                            }
                         }
 
                         ui.add(Separator::default().vertical().spacing(8.0));
