@@ -301,6 +301,8 @@ struct LogViewerApp {
     find_matches:        Vec<usize>,
     find_current_match:  usize,
     find_total_matches:  usize,
+    // FIX #9: track whether find_next has been called at least once
+    find_next_called:    bool,
 
     // ── Navigation panel ─────────────────────────────────────────────────
     nav_open:           bool,
@@ -352,6 +354,7 @@ impl Default for LogViewerApp {
             find_matches: vec![],
             find_current_match: 0,
             find_total_matches: 0,
+            find_next_called: false,
             nav_open: false,
             nav_entries: vec![],
             nav_show_error:     true,
@@ -456,6 +459,8 @@ impl LogViewerApp {
     fn recompute_find_matches(&mut self) {
         self.find_matches.clear();
         self.find_total_matches = 0;
+        // FIX #9: reset the first-call flag whenever matches are recomputed
+        self.find_next_called = false;
         if self.find_what.is_empty() { return; }
 
         let needle = if self.find_match_case {
@@ -538,22 +543,37 @@ impl LogViewerApp {
         false
     }
 
+    // FIX #9: find_next no longer skips match 0.
+    // On the very first call after recompute, we stay at index 0 rather than
+    // immediately advancing to 1.
     fn find_next(&mut self) {
         if self.find_total_matches == 0 { self.recompute_find_matches(); }
         if self.find_total_matches == 0 { return; }
 
-        if self.find_backward {
-            if self.find_current_match == 0 {
-                if self.find_wrap_around { self.find_current_match = self.find_total_matches - 1; }
+        if self.find_next_called {
+            // Normal navigation: advance the cursor
+            if self.find_backward {
+                if self.find_current_match == 0 {
+                    if self.find_wrap_around { self.find_current_match = self.find_total_matches - 1; }
+                } else {
+                    self.find_current_match -= 1;
+                }
             } else {
-                self.find_current_match -= 1;
+                self.find_current_match += 1;
+                if self.find_current_match >= self.find_total_matches {
+                    self.find_current_match = if self.find_wrap_around { 0 } else { self.find_total_matches - 1 };
+                }
             }
         } else {
-            self.find_current_match += 1;
-            if self.find_current_match >= self.find_total_matches {
-                self.find_current_match = if self.find_wrap_around { 0 } else { self.find_total_matches - 1 };
+            // First call: jump to match 0 (or last match if backward) without skipping
+            self.find_next_called = true;
+            if self.find_backward {
+                self.find_current_match = self.find_total_matches - 1;
+            } else {
+                self.find_current_match = 0;
             }
         }
+
         self.jump_to_find_match();
     }
 
@@ -564,6 +584,7 @@ impl LogViewerApp {
         } else {
             self.find_current_match -= 1;
         }
+        self.find_next_called = true;
         self.jump_to_find_match();
     }
 
@@ -617,13 +638,18 @@ impl LogViewerApp {
             let line = &self.all_lines[line_idx];
             let raw_lc = line.raw.to_lowercase();
 
-            if self.is_bookmarked(row_idx) {
+            // FIX #8: Bookmark entries are added independently but we use a
+            // separate flag so that a bookmarked error/warning still gets its
+            // typed entry rather than being skipped by `continue` below.
+            let is_bm = self.is_bookmarked(row_idx);
+            if is_bm {
                 self.nav_entries.push(NavEntry {
                     kind: NavKind::Bookmark, row_idx, line_num: line.num,
                     label: trunc(&line.message, 38),
                 });
             }
 
+            // Now add the semantic entry (if any), regardless of bookmark status.
             if matches!(line.level, Level::Error) {
                 self.nav_entries.push(NavEntry { kind: NavKind::Error, row_idx, line_num: line.num, label: trunc(&line.message, 38) });
                 continue;
@@ -657,7 +683,6 @@ impl LogViewerApp {
 
             if raw_lc.contains("teardown") || raw_lc.contains("tear down")
                 || raw_lc.contains("cleanup") || raw_lc.contains("---teardown---")
-                || (raw_lc.contains("---") && raw_lc.len() < 80)
             {
                 self.nav_entries.push(NavEntry { kind: NavKind::Teardown, row_idx, line_num: line.num, label: trunc(&line.message, 38) });
                 continue;
@@ -1205,17 +1230,16 @@ impl App for LogViewerApp {
             let mut kw_changed = false;
             let mut new_kw = self.nav_custom_kw_buf.clone();
 
-            let show_err=self.nav_show_error; let show_wrn=self.nav_show_warning;
-            let show_ts=self.nav_show_teststart; let show_te=self.nav_show_testend;
-            let show_stp=self.nav_show_step; let show_tdn=self.nav_show_teardown;
-            let show_cst=self.nav_show_custom; let show_bm=self.nav_show_bookmark;
-
             let visible_data: Vec<(NavKind,usize,usize,String)> = self.nav_entries.iter()
                 .filter(|e| match e.kind {
-                    NavKind::Error=>show_err, NavKind::Warning=>show_wrn,
-                    NavKind::TestStart=>show_ts, NavKind::TestEnd=>show_te,
-                    NavKind::Step=>show_stp, NavKind::Teardown=>show_tdn,
-                    NavKind::Custom=>show_cst, NavKind::Bookmark=>show_bm,
+                    NavKind::Error     => self.nav_show_error,
+                    NavKind::Warning   => self.nav_show_warning,
+                    NavKind::TestStart => self.nav_show_teststart,
+                    NavKind::TestEnd   => self.nav_show_testend,
+                    NavKind::Step      => self.nav_show_step,
+                    NavKind::Teardown  => self.nav_show_teardown,
+                    NavKind::Custom    => self.nav_show_custom,
+                    NavKind::Bookmark  => self.nav_show_bookmark,
                 })
                 .map(|e| (e.kind,e.row_idx,e.line_num,e.label.clone()))
                 .collect();
@@ -1497,21 +1521,40 @@ impl LogViewerApp {
             // Left: options
             ui.vertical(|ui| {
                 ui.set_width(240.0);
-                ui.checkbox(&mut self.find_backward,    RichText::new("Backward direction").font(FontId::proportional(11.0)).color(COL_TEXT));
-                ui.checkbox(&mut self.find_whole_word,  RichText::new("Match whole word only").font(FontId::proportional(11.0)).color(COL_TEXT));
-                ui.checkbox(&mut self.find_match_case,  RichText::new("Match case").font(FontId::proportional(11.0)).color(COL_TEXT));
+
+                // FIX #3: recompute matches whenever any search option checkbox changes.
+                let mut opts_changed = false;
+
+                let r = ui.checkbox(&mut self.find_backward, RichText::new("Backward direction").font(FontId::proportional(11.0)).color(COL_TEXT));
+                if r.changed() { opts_changed = true; }
+
+                let r = ui.checkbox(&mut self.find_whole_word, RichText::new("Match whole word only").font(FontId::proportional(11.0)).color(COL_TEXT));
+                if r.changed() { opts_changed = true; }
+
+                let r = ui.checkbox(&mut self.find_match_case, RichText::new("Match case").font(FontId::proportional(11.0)).color(COL_TEXT));
+                if r.changed() { opts_changed = true; }
+
                 ui.checkbox(&mut self.find_wrap_around, RichText::new("Wrap around").font(FontId::proportional(11.0)).color(COL_TEXT));
+
                 ui.add_space(12.0);
                 ui.label(RichText::new("Search Mode").font(FontId::monospace(10.0)).color(COL_FAINT).strong());
                 ui.add_space(4.0);
-                ui.radio_value(&mut self.find_search_mode, SearchMode::Normal,   RichText::new("Normal").font(FontId::proportional(11.0)).color(COL_TEXT));
-                ui.radio_value(&mut self.find_search_mode, SearchMode::Extended, RichText::new("Extended (\\n, \\r, \\t, \\0, \\x...)").font(FontId::proportional(11.0)).color(COL_TEXT));
+
+                let r = ui.radio_value(&mut self.find_search_mode, SearchMode::Normal, RichText::new("Normal").font(FontId::proportional(11.0)).color(COL_TEXT));
+                if r.changed() { opts_changed = true; }
+
+                let r = ui.radio_value(&mut self.find_search_mode, SearchMode::Extended, RichText::new("Extended (\\n, \\r, \\t, \\0, \\x...)").font(FontId::proportional(11.0)).color(COL_TEXT));
+                if r.changed() { opts_changed = true; }
+
                 ui.horizontal(|ui| {
-                    ui.radio_value(&mut self.find_search_mode, SearchMode::Regex, RichText::new("Regular expression").font(FontId::proportional(11.0)).color(COL_TEXT));
+                    let r = ui.radio_value(&mut self.find_search_mode, SearchMode::Regex, RichText::new("Regular expression").font(FontId::proportional(11.0)).color(COL_TEXT));
+                    if r.changed() { opts_changed = true; }
                     if self.find_search_mode == SearchMode::Regex {
                         ui.checkbox(&mut self.find_regex_dotall, RichText::new(". matches newline").font(FontId::proportional(10.0)).color(COL_MUTED));
                     }
                 });
+
+                if opts_changed { self.recompute_find_matches(); }
             });
 
             ui.add_space(20.0);
@@ -1524,12 +1567,12 @@ impl LogViewerApp {
 
                 if ui.add(Button::new(RichText::new("Find Next").color(if nav_ok{COL_TEXT}else{COL_FAINT}).font(FontId::proportional(12.0)))
                     .fill(Color32::from_rgb(40,50,65)).stroke(Stroke::new(0.5,if nav_ok{COL_ACCENT}else{COL_BORDER}))
-                    .rounding(Rounding::same(4.0)).min_size(Vec2::new(140.0,30.0))).clicked() && nav_ok
+                    .rounding(Rounding::same(4.0)).min_size(Vec2::new(140.0,30.0))).clicked()
                 { self.find_next(); }
 
                 if ui.add(Button::new(RichText::new("Find Previous").color(if nav_ok{COL_TEXT}else{COL_FAINT}).font(FontId::proportional(12.0)))
                     .fill(Color32::from_rgb(40,50,65)).stroke(Stroke::new(0.5,COL_BORDER))
-                    .rounding(Rounding::same(4.0)).min_size(Vec2::new(140.0,30.0))).clicked() && nav_ok
+                    .rounding(Rounding::same(4.0)).min_size(Vec2::new(140.0,30.0))).clicked()
                 { self.find_prev(); }
 
                 ui.add_space(4.0);
@@ -1558,7 +1601,9 @@ impl LogViewerApp {
 
         ui.horizontal(|ui| {
             ui.label(RichText::new("Find what:   ").font(FontId::proportional(12.0)).color(COL_TEXT));
-            ui.add(TextEdit::singleline(&mut self.find_what).desired_width(280.0).font(FontId::monospace(12.0)));
+            let r = ui.add(TextEdit::singleline(&mut self.find_what).desired_width(280.0).font(FontId::monospace(12.0)));
+            // FIX #3: also recompute in the replace tab when the search text changes
+            if r.changed() { self.recompute_find_matches(); }
         });
         ui.horizontal(|ui| {
             ui.label(RichText::new("Replace with:").font(FontId::proportional(12.0)).color(COL_TEXT));
@@ -1570,8 +1615,12 @@ impl LogViewerApp {
         ui.horizontal(|ui| {
             ui.vertical(|ui| {
                 ui.set_width(240.0);
-                ui.checkbox(&mut self.find_match_case,  RichText::new("Match case").font(FontId::proportional(11.0)).color(COL_TEXT));
-                ui.checkbox(&mut self.find_whole_word,  RichText::new("Match whole word only").font(FontId::proportional(11.0)).color(COL_TEXT));
+                let mut opts_changed = false;
+                let r = ui.checkbox(&mut self.find_match_case,  RichText::new("Match case").font(FontId::proportional(11.0)).color(COL_TEXT));
+                if r.changed() { opts_changed = true; }
+                let r = ui.checkbox(&mut self.find_whole_word,  RichText::new("Match whole word only").font(FontId::proportional(11.0)).color(COL_TEXT));
+                if r.changed() { opts_changed = true; }
+                if opts_changed { self.recompute_find_matches(); }
             });
             ui.add_space(20.0);
             ui.vertical(|ui| {
@@ -1626,6 +1675,7 @@ impl LogViewerApp {
 
 // ─── main ────────────────────────────────────────────────────────────────────
 
+// FIX #11: eframe 0.27+ requires the creator closure to return Ok(Box<dyn App>)
 fn main() -> eframe::Result<()> {
     let opts = NativeOptions {
         viewport: egui::ViewportBuilder::default()
@@ -1635,5 +1685,9 @@ fn main() -> eframe::Result<()> {
             .with_drag_and_drop(true),
         ..Default::default()
     };
-    eframe::run_native("XTR Log Viewer", opts, Box::new(|_cc| Box::new(LogViewerApp::default())))
+    eframe::run_native(
+        "XTR Log Viewer",
+        opts,
+        Box::new(|_cc| Ok(Box::new(LogViewerApp::default()))),
+    )
 }
