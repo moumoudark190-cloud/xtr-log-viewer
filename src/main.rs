@@ -864,7 +864,7 @@ impl App for LogViewerApp {
                         });
                     });
 
-                    ui.add(egui::Separator::default().stroke(Stroke::new(1.0, COL_BORDER)));
+                    ui.separator();
 
                     // ── Premium Toolbar ─────────────────────────────────────────────
                     ui.add_space(6.0);
@@ -1577,13 +1577,31 @@ impl LogViewerApp {
 
                         ui.add_space(16.0);
 
+                        // ── Advanced search options (replaced wrapper buttons with native checkboxes) ──
                         ui.horizontal(|ui| {
                             ui.spacing_mut().item_spacing.x = 18.0;
                             let mut changed = false;
-                            changed |= find_checkbox(ui, &mut self.search.match_case,  "Aa",    "Match case");
-                            changed |= find_checkbox(ui, &mut self.search.whole_word,  "\\b",   "Whole word");
-                            changed |= find_checkbox(ui, &mut self.search.wrap_around, "↻",     "Wrap around");
-                            changed |= find_checkbox(ui, &mut self.search.backward,    "←",     "Backward");
+
+                            changed |= ui.checkbox(
+                                &mut self.search.match_case,
+                                RichText::new("Aa").font(FontId::monospace(11.0))
+                            ).on_hover_text("Match case").changed();
+
+                            changed |= ui.checkbox(
+                                &mut self.search.whole_word,
+                                RichText::new("\\b").font(FontId::monospace(11.0))
+                            ).on_hover_text("Whole word").changed();
+
+                            changed |= ui.checkbox(
+                                &mut self.search.wrap_around,
+                                RichText::new("↻").font(FontId::monospace(11.0))
+                            ).on_hover_text("Wrap around").changed();
+
+                            changed |= ui.checkbox(
+                                &mut self.search.backward,
+                                RichText::new("←").font(FontId::monospace(11.0))
+                            ).on_hover_text("Backward").changed();
+
                             if changed {
                                 self.search.first_search = true;
                                 self.search.find_all(&self.filtered, &self.all_lines);
@@ -1812,23 +1830,6 @@ fn menu_item(icon: &str, label: &str, shortcut: &str) -> Button<'static> {
 }
 
 fn painter_shortcut_key(k: &str) -> String { k.to_string() }
-
-fn find_checkbox(ui: &mut egui::Ui, val: &mut bool, label: &str, tooltip: &str) -> bool {
-    let old = *val;
-    let resp = ui.add(Button::new(
-        RichText::new(label).font(FontId::monospace(11.0))
-            .color(if *val { COL_ACCENT } else { COL_MUTED })
-    )
-    .fill(if *val { Color32::from_rgba_unmultiplied(88, 166, 255, 22) } else { Color32::from_rgb(18, 22, 30) })
-    .stroke(Stroke::new(1.0, if *val { Color32::from_rgba_unmultiplied(88, 166, 255, 100) } else { COL_BORDER }))
-    .rounding(Rounding::same(5.0))
-    .min_size(Vec2::new(0.0, 26.0)))
-    .on_hover_text(tooltip);
-    if resp.clicked() { *val = !*val; }
-    *val != old
-}
-
-// ─── main ─────────────────────────────────────────────────────────────────────
 
 fn main() -> eframe::Result<()> {
     let opts = NativeOptions {
