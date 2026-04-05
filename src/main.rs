@@ -62,7 +62,7 @@ impl Level {
     }
 }
 
-// ─── Search Types ────────────────────────────────────────────────────────────
+// ─── Search ──────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SearchMode {
@@ -70,45 +70,7 @@ enum SearchMode {
     Extended,
     Regex,
 }
-
-impl Default for SearchMode {
-    fn default() -> Self { Self::Normal }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum FindDialogTab {
-    Find,
-    Replace,
-    FindInFiles,
-    Mark,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum MarkStyle {
-    Red,
-    Orange,
-    Yellow,
-    Green,
-    Blue,
-    Purple,
-}
-
-impl Default for MarkStyle {
-    fn default() -> Self { Self::Yellow }
-}
-
-impl MarkStyle {
-    fn color(self) -> Color32 {
-        match self {
-            Self::Red    => Color32::from_rgb(255, 107, 107),
-            Self::Orange => Color32::from_rgb(255, 179, 71),
-            Self::Yellow => Color32::from_rgb(255, 235, 59),
-            Self::Green  => Color32::from_rgb(105, 240, 174),
-            Self::Blue   => Color32::from_rgb(100, 181, 246),
-            Self::Purple => Color32::from_rgb(186, 104, 200),
-        }
-    }
-}
+impl Default for SearchMode { fn default() -> Self { Self::Normal } }
 
 #[derive(Debug, Clone)]
 struct SearchMatch {
@@ -127,29 +89,15 @@ struct SearchMatch {
 #[derive(Debug, Clone, Default)]
 struct SearchState {
     find_what: String,
-    replace_with: String,
-    
     match_case: bool,
     whole_word: bool,
     wrap_around: bool,
     backward: bool,
-    
     mode: SearchMode,
-    dot_matches_newline: bool,
-    
-    bookmark_matches: bool,
-    purge_before_mark: bool,
-    mark_style: MarkStyle,
-    
     matches: Vec<SearchMatch>,
     current_match_idx: usize,
-    
-    find_history: Vec<String>,
-    replace_history: Vec<String>,
-    
     results_panel_open: bool,
     results_panel_height: f32,
-    
     first_search: bool,
 }
 
@@ -157,17 +105,15 @@ impl SearchState {
     fn new() -> Self {
         Self {
             wrap_around: true,
-            bookmark_matches: true,
             results_panel_height: 200.0,
             first_search: true,
             ..Default::default()
         }
     }
-    
+
     fn expand_escapes(&self, s: &str) -> String {
         let mut result = String::with_capacity(s.len());
         let mut chars = s.chars().peekable();
-        
         while let Some(c) = chars.next() {
             if c == '\\' {
                 match chars.next() {
@@ -180,31 +126,23 @@ impl SearchState {
                         let mut hex = String::new();
                         for _ in 0..2 {
                             if let Some(&c) = chars.peek() {
-                                if c.is_ascii_hexdigit() {
-                                    hex.push(chars.next().unwrap());
-                                }
+                                if c.is_ascii_hexdigit() { hex.push(chars.next().unwrap()); }
                             }
                         }
                         if let Ok(val) = u8::from_str_radix(&hex, 16) {
                             result.push(val as char);
                         } else {
-                            result.push_str("\\x");
-                            result.push_str(&hex);
+                            result.push_str("\\x"); result.push_str(&hex);
                         }
                     }
-                    Some(other) => {
-                        result.push('\\');
-                        result.push(other);
-                    }
+                    Some(other) => { result.push('\\'); result.push(other); }
                     None => result.push('\\'),
                 }
-            } else {
-                result.push(c);
-            }
+            } else { result.push(c); }
         }
         result
     }
-    
+
     fn matches_whole_word(&self, hay: &str, needle: &str) -> bool {
         let mut start = 0;
         while let Some(pos) = hay[start..].find(needle) {
@@ -219,134 +157,68 @@ impl SearchState {
         }
         false
     }
-    
+
     fn find_all(&mut self, filtered: &[usize], all_lines: &[LogLine]) {
         self.matches.clear();
-        
-        if self.find_what.is_empty() {
-            return;
-        }
-        
+        if self.find_what.is_empty() { return; }
+
         let search_text = match self.mode {
             SearchMode::Extended => self.expand_escapes(&self.find_what),
             _ => self.find_what.clone(),
         };
-        
-        let needle = if self.match_case {
-            search_text.clone()
-        } else {
-            search_text.to_lowercase()
-        };
-        
+        let needle = if self.match_case { search_text.clone() } else { search_text.to_lowercase() };
+
         for (row_idx, &line_idx) in filtered.iter().enumerate() {
             let Some(line) = all_lines.get(line_idx) else { continue };
-            
-            let hay = if self.match_case {
-                line.raw.clone()
-            } else {
-                line.raw.to_lowercase()
-            };
-            
+            let hay = if self.match_case { line.raw.clone() } else { line.raw.to_lowercase() };
             let mut start = 0;
             while let Some(pos) = hay[start..].find(&needle) {
                 let abs_pos = start + pos;
                 let match_end = abs_pos + needle.len();
-                
                 if self.whole_word && !self.matches_whole_word(&hay, &needle) {
-                    start = abs_pos + 1;
-                    continue;
+                    start = abs_pos + 1; continue;
                 }
-                
                 let before_start = abs_pos.saturating_sub(30);
                 let after_end = (match_end + 30).min(line.raw.len());
-                
-                let context_before = if before_start < abs_pos {
-                    line.raw[before_start..abs_pos].to_string()
-                } else {
-                    String::new()
-                };
-                
-                let context_after = if match_end < after_end {
-                    line.raw[match_end..after_end].to_string()
-                } else {
-                    String::new()
-                };
-                
-                let match_text = line.raw[abs_pos..match_end].to_string();
-                
                 self.matches.push(SearchMatch {
-                    row_idx,
-                    line_idx,
-                    line_num: line.num,
-                    start_col: abs_pos,
-                    end_col: match_end,
-                    match_text,
-                    context_before,
-                    context_after,
+                    row_idx, line_idx, line_num: line.num,
+                    start_col: abs_pos, end_col: match_end,
+                    match_text: line.raw[abs_pos..match_end].to_string(),
+                    context_before: if before_start < abs_pos { line.raw[before_start..abs_pos].to_string() } else { String::new() },
+                    context_after: if match_end < after_end { line.raw[match_end..after_end].to_string() } else { String::new() },
                     module: line.module.clone(),
                     level: line.level,
                 });
-                
                 start = abs_pos + 1;
             }
         }
-        
-        if self.current_match_idx >= self.matches.len() {
-            self.current_match_idx = 0;
-        }
+        if self.current_match_idx >= self.matches.len() { self.current_match_idx = 0; }
     }
-    
+
     fn next(&mut self) -> Option<usize> {
         if self.matches.is_empty() { return None; }
-        
         if self.first_search {
             self.first_search = false;
-            self.current_match_idx = if self.backward {
-                self.matches.len() - 1
-            } else {
-                0
-            };
+            self.current_match_idx = if self.backward { self.matches.len() - 1 } else { 0 };
+        } else if self.backward {
+            if self.current_match_idx == 0 {
+                if self.wrap_around { self.current_match_idx = self.matches.len() - 1; }
+            } else { self.current_match_idx -= 1; }
         } else {
-            if self.backward {
-                if self.current_match_idx == 0 {
-                    if self.wrap_around {
-                        self.current_match_idx = self.matches.len() - 1;
-                    }
-                } else {
-                    self.current_match_idx -= 1;
-                }
-            } else {
-                self.current_match_idx += 1;
-                if self.current_match_idx >= self.matches.len() {
-                    self.current_match_idx = if self.wrap_around { 0 } else { self.matches.len() - 1 };
-                }
+            self.current_match_idx += 1;
+            if self.current_match_idx >= self.matches.len() {
+                self.current_match_idx = if self.wrap_around { 0 } else { self.matches.len() - 1 };
             }
         }
-        
         Some(self.matches[self.current_match_idx].row_idx)
     }
-    
+
     fn prev(&mut self) -> Option<usize> {
         if self.matches.is_empty() { return None; }
-        
         if self.current_match_idx == 0 {
-            if self.wrap_around {
-                self.current_match_idx = self.matches.len() - 1;
-            }
-        } else {
-            self.current_match_idx -= 1;
-        }
-        
+            if self.wrap_around { self.current_match_idx = self.matches.len() - 1; }
+        } else { self.current_match_idx -= 1; }
         Some(self.matches[self.current_match_idx].row_idx)
-    }
-    
-    fn add_to_history(&mut self) {
-        if !self.find_what.is_empty() && !self.find_history.contains(&self.find_what) {
-            self.find_history.insert(0, self.find_what.clone());
-            if self.find_history.len() > 25 {
-                self.find_history.pop();
-            }
-        }
     }
 }
 
@@ -354,14 +226,7 @@ impl SearchState {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum NavKind {
-    Error,
-    Warning,
-    TestStart,
-    TestEnd,
-    Step,
-    Teardown,
-    Custom,
-    Bookmark,
+    Error, Warning, TestStart, TestEnd, Step, Teardown, Custom, Bookmark,
 }
 
 impl NavKind {
@@ -393,24 +258,15 @@ impl NavKind {
 
 #[derive(Debug, Clone)]
 struct NavEntry {
-    kind:     NavKind,
-    row_idx:  usize,
-    line_num: usize,
-    label:    String,
+    kind: NavKind, row_idx: usize, line_num: usize, label: String,
 }
 
 // ─── LogLine ─────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone)]
 struct LogLine {
-    num:       usize,
-    timestamp: String,
-    ts_ms:     Option<u64>,
-    delta_ms:  Option<u64>,
-    level:     Level,
-    module:    String,
-    message:   String,
-    raw:       String,
+    num: usize, timestamp: String, ts_ms: Option<u64>, delta_ms: Option<u64>,
+    level: Level, module: String, message: String, raw: String,
 }
 
 fn parse_timestamp_ms(ts: &str) -> Option<u64> {
@@ -425,7 +281,7 @@ fn parse_timestamp_ms(ts: &str) -> Option<u64> {
         (&sec_rest[..dot], &sec_rest[dot + 1..])
     } else { (sec_rest, "") };
     let s_str = s_str.trim_end_matches(|c: char| !c.is_ascii_digit());
-    let s:  u64 = s_str.parse().ok()?;
+    let s: u64 = s_str.parse().ok()?;
     let ms: u64 = if frac.is_empty() { 0 } else {
         let n = frac.len().min(3);
         let v: u64 = frac[..n].parse().ok()?;
@@ -466,8 +322,7 @@ fn take_bracket(s: &str) -> Option<(&str, &str)> {
 fn parse_log_line(raw: &str, num: usize) -> LogLine {
     let s = strip_ansi(raw.trim());
     let make = |ts: String, level: Level, module: String, message: String| LogLine {
-        num, timestamp: ts, ts_ms: None, delta_ms: None, level, module, message,
-        raw: raw.to_string(),
+        num, timestamp: ts, ts_ms: None, delta_ms: None, level, module, message, raw: raw.to_string(),
     };
 
     if s.starts_with('[') {
@@ -479,9 +334,7 @@ fn parse_log_line(raw: &str, num: usize) -> LogLine {
                 let level = Level::from_str(lv);
                 let (module, message) = if let Some((m, msg)) = take_bracket(rest2) {
                     (m.to_string(), msg.to_string())
-                } else {
-                    (String::new(), rest2.to_string())
-                };
+                } else { (String::new(), rest2.to_string()) };
                 return make(ts, level, module, message);
             }
         }
@@ -524,320 +377,144 @@ fn trunc(s: &str, max: usize) -> String {
     else { format!("{}…", &s[..max.saturating_sub(1)]) }
 }
 
-// ─── UI Colors ───────────────────────────────────────────────────────────────
+// ─── Color palette ───────────────────────────────────────────────────────────
 
-mod colors {
-    use super::*;
-    
-    pub const DIALOG_BG: Color32 = Color32::from_rgb(22, 27, 34);
-    pub const DIALOG_BORDER: Color32 = Color32::from_rgb(48, 54, 61);
-    pub const HEADER_BG: Color32 = Color32::from_rgb(28, 33, 40);
-    pub const TAB_ACTIVE_BG: Color32 = Color32::from_rgb(35, 42, 52);
-    pub const TAB_HOVER_BG: Color32 = Color32::from_rgb(30, 37, 46);
-    pub const INPUT_BG: Color32 = Color32::from_rgb(13, 17, 23);
-    pub const INPUT_BORDER: Color32 = Color32::from_rgb(48, 54, 61);
-    pub const BUTTON_BG: Color32 = Color32::from_rgb(35, 42, 52);
-    pub const BUTTON_HOVER: Color32 = Color32::from_rgb(45, 55, 68);
-    pub const BUTTON_PRIMARY: Color32 = Color32::from_rgb(31, 111, 235);
-    pub const BUTTON_PRIMARY_HOVER: Color32 = Color32::from_rgb(56, 132, 255);
-    pub const TEXT_PRIMARY: Color32 = Color32::from_rgb(230, 237, 243);
-    pub const TEXT_SECONDARY: Color32 = Color32::from_rgb(139, 148, 158);
-    pub const TEXT_MUTED: Color32 = Color32::from_rgb(110, 118, 129);
-    pub const ACCENT: Color32 = Color32::from_rgb(88, 166, 255);
-    pub const MATCH_HIGHLIGHT: Color32 = Color32::from_rgb(255, 213, 79);
-    pub const RESULTS_BG: Color32 = Color32::from_rgb(13, 17, 23);
-    pub const RESULTS_HEADER: Color32 = Color32::from_rgb(22, 27, 34);
-    pub const RESULTS_ROW_HOVER: Color32 = Color32::from_rgb(33, 38, 45);
-    pub const RESULTS_ROW_SELECTED: Color32 = Color32::from_rgb(48, 54, 61);
+const BG_BASE:      Color32 = Color32::from_rgb(13, 17, 23);
+const BG_PANEL:     Color32 = Color32::from_rgb(18, 22, 30);
+const BG_ROW_HOVER: Color32 = Color32::from_rgba_premultiplied(255, 255, 255, 10);
+const BG_ROW_SEL:   Color32 = Color32::from_rgba_premultiplied(88, 166, 255, 45);
+const COL_BORDER:   Color32 = Color32::from_rgb(36, 42, 52);
+const COL_BORDER_HL:Color32 = Color32::from_rgb(58, 68, 84);
+const COL_TEXT:     Color32 = Color32::from_rgb(215, 222, 232);
+const COL_MUTED:    Color32 = Color32::from_rgb(140, 148, 160);
+const COL_FAINT:    Color32 = Color32::from_rgb(82, 88, 100);
+const COL_ACCENT:   Color32 = Color32::from_rgb(88, 166, 255);
+const COL_MATCH_HL: Color32 = Color32::from_rgb(255, 213, 79);
+
+const COL_LN:  f32 = 54.0;
+const COL_TS:  f32 = 96.0;
+const COL_DT:  f32 = 76.0;
+const COL_LV:  f32 = 46.0;
+const COL_MOD: f32 = 180.0;
+
+fn dark_visuals() -> egui::Visuals {
+    let mut v = egui::Visuals::dark();
+    v.panel_fill          = BG_PANEL;
+    v.window_fill         = BG_BASE;
+    v.override_text_color = Some(COL_TEXT);
+    v.widgets.inactive.bg_fill   = Color32::from_rgb(24, 30, 40);
+    v.widgets.inactive.bg_stroke = Stroke::new(0.5, COL_BORDER);
+    v.widgets.hovered.bg_fill    = Color32::from_rgb(34, 42, 54);
+    v.widgets.hovered.bg_stroke  = Stroke::new(0.5, COL_BORDER_HL);
+    v.widgets.active.bg_fill     = Color32::from_rgb(50, 60, 76);
+    v.selection.bg_fill          = Color32::from_rgba_unmultiplied(88, 166, 255, 65);
+    v
 }
 
-use colors::*;
+// ─── Small UI helpers ─────────────────────────────────────────────────────────
 
-// ─── Styled UI Helper Functions (Free Functions) ─────────────────────────────
+fn accent_button_ui(text: &str) -> Button<'_> {
+    Button::new(RichText::new(text).strong().color(BG_BASE).font(FontId::proportional(12.0)))
+        .fill(COL_ACCENT)
+        .stroke(Stroke::NONE)
+        .rounding(Rounding::same(7.0))
+        .min_size(Vec2::new(0.0, 30.0))
+}
 
-fn styled_text_input(ui: &mut egui::Ui, id: &str, text: &mut String, hint: &str, width: f32) -> egui::Response {
+fn ghost_button(text: &str) -> Button<'_> {
+    Button::new(RichText::new(text).color(COL_MUTED).font(FontId::proportional(12.0)))
+        .fill(Color32::from_rgb(24, 30, 40))
+        .stroke(Stroke::new(0.5, COL_BORDER))
+        .rounding(Rounding::same(7.0))
+        .min_size(Vec2::new(0.0, 30.0))
+}
+
+fn icon_button(icon: &str) -> Button<'_> {
+    Button::new(RichText::new(icon).color(COL_MUTED).font(FontId::proportional(14.0)))
+        .fill(Color32::from_rgb(24, 30, 40))
+        .stroke(Stroke::new(0.5, COL_BORDER))
+        .rounding(Rounding::same(7.0))
+        .min_size(Vec2::new(30.0, 30.0))
+        .sense(Sense::click())
+}
+
+fn close_button() -> Button<'static> {
+    Button::new(RichText::new("✕").color(Color32::from_rgb(160, 160, 165)).font(FontId::proportional(13.0)))
+        .fill(Color32::TRANSPARENT)
+        .stroke(Stroke::NONE)
+        .rounding(Rounding::same(4.0))
+        .min_size(Vec2::new(28.0, 28.0))
+}
+
+fn level_toggle(ui: &mut egui::Ui, label: &str, count: usize, active: bool, color: Color32) -> bool {
+    let (fg, bg, stroke) = if active {
+        (color,
+         Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), 28),
+         Stroke::new(1.0, Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), 160)))
+    } else {
+        (Color32::from_gray(75), Color32::from_rgb(18, 22, 30), Stroke::new(0.5, Color32::from_gray(38)))
+    };
+    ui.add(Button::new(
+        RichText::new(format!("{} {}", label, count)).color(fg).font(FontId::monospace(11.0)).strong(),
+    ).fill(bg).stroke(stroke).rounding(Rounding::same(6.0)).min_size(Vec2::new(0.0, 28.0))).clicked()
+}
+
+fn nav_kind_pill(ui: &mut egui::Ui, kind: NavKind) {
+    let col = kind.color();
     egui::Frame::none()
-        .fill(INPUT_BG)
-        .stroke(Stroke::new(1.0, INPUT_BORDER))
-        .rounding(Rounding::same(6.0))
-        .inner_margin(egui::Margin::symmetric(10.0, 6.0))
+        .fill(Color32::from_rgba_unmultiplied(col.r(), col.g(), col.b(), 28))
+        .stroke(Stroke::new(0.5, Color32::from_rgba_unmultiplied(col.r(), col.g(), col.b(), 100)))
+        .rounding(Rounding::same(3.0))
+        .inner_margin(egui::Margin::symmetric(4.0, 1.0))
         .show(ui, |ui| {
-            ui.add(
-                TextEdit::singleline(text)
-                    .id(egui::Id::new(id))
-                    .hint_text(RichText::new(hint).color(TEXT_MUTED))
-                    .desired_width(width)
-                    .font(FontId::monospace(13.0))
-                    .frame(false)
-            )
-        }).inner
-}
-
-fn styled_checkbox(ui: &mut egui::Ui, checked: &mut bool, label: &str, icon: &str) -> bool {
-    let old = *checked;
-    
-    ui.horizontal(|ui| {
-        let (rect, response) = ui.allocate_exact_size(Vec2::new(20.0, 20.0), Sense::click());
-        
-        let painter = ui.painter();
-        let rounding = Rounding::same(4.0);
-        
-        let (bg, border) = if *checked {
-            (ACCENT, ACCENT)
-        } else if response.hovered() {
-            (Color32::from_rgb(40, 48, 60), TEXT_SECONDARY)
-        } else {
-            (Color32::from_rgb(30, 36, 45), INPUT_BORDER)
-        };
-        
-        painter.rect(rect, rounding, bg, Stroke::new(1.0, border));
-        
-        if *checked {
-            painter.text(
-                rect.center(),
-                Align2::CENTER_CENTER,
-                "✓",
-                FontId::proportional(12.0),
-                Color32::WHITE
-            );
-        }
-        
-        if response.clicked() {
-            *checked = !*checked;
-        }
-        
-        ui.add_space(8.0);
-        
-        ui.label(
-            RichText::new(format!("{} {}", icon, label))
-                .font(FontId::proportional(12.0))
-                .color(if *checked { TEXT_PRIMARY } else { TEXT_SECONDARY })
-        );
-    });
-    
-    *checked != old
-}
-
-fn styled_radio(ui: &mut egui::Ui, selected: bool, label: &str, hint: &str) -> bool {
-    let mut clicked = false;
-    
-    ui.horizontal(|ui| {
-        let (rect, response) = ui.allocate_exact_size(Vec2::new(18.0, 18.0), Sense::click());
-        
-        let painter = ui.painter();
-        let center = rect.center();
-        let radius = 8.0;
-        
-        let (bg, border) = if selected {
-            (ACCENT, ACCENT)
-        } else if response.hovered() {
-            (Color32::from_rgb(40, 48, 60), TEXT_SECONDARY)
-        } else {
-            (Color32::TRANSPARENT, INPUT_BORDER)
-        };
-        
-        painter.circle(center, radius, bg, Stroke::new(1.5, border));
-        
-        if selected {
-            painter.circle_filled(center, 4.0, Color32::WHITE);
-        }
-        
-        if response.clicked() {
-            clicked = true;
-        }
-        
-        ui.add_space(8.0);
-        
-        ui.vertical(|ui| {
-            ui.spacing_mut().item_spacing.y = 0.0;
-            ui.label(
-                RichText::new(label)
-                    .font(FontId::proportional(12.0))
-                    .color(if selected { TEXT_PRIMARY } else { TEXT_SECONDARY })
-            );
-            ui.label(
-                RichText::new(hint)
-                    .font(FontId::proportional(10.0))
-                    .color(TEXT_MUTED)
-            );
+            ui.label(RichText::new(kind.short_label()).font(FontId::monospace(9.0)).color(col).strong());
         });
-    });
-    
-    clicked
-}
-
-fn primary_button(ui: &mut egui::Ui, label: &str, enabled: bool) -> bool {
-    let (rect, response) = ui.allocate_exact_size(Vec2::new(160.0, 36.0), Sense::click());
-    
-    let painter = ui.painter();
-    
-    let bg = if !enabled {
-        Color32::from_rgb(40, 45, 55)
-    } else if response.is_pointer_button_down_on() {
-        Color32::from_rgb(25, 90, 190)
-    } else if response.hovered() {
-        BUTTON_PRIMARY_HOVER
-    } else {
-        BUTTON_PRIMARY
-    };
-    
-    painter.rect_filled(rect, Rounding::same(8.0), bg);
-    
-    painter.text(
-        rect.center(),
-        Align2::CENTER_CENTER,
-        label,
-        FontId::proportional(13.0),
-        if enabled { Color32::WHITE } else { TEXT_MUTED }
-    );
-    
-    enabled && response.clicked()
-}
-
-fn secondary_button(ui: &mut egui::Ui, label: &str, enabled: bool) -> bool {
-    let (rect, response) = ui.allocate_exact_size(Vec2::new(160.0, 32.0), Sense::click());
-    
-    let painter = ui.painter();
-    
-    let (bg, border) = if !enabled {
-        (Color32::from_rgb(28, 33, 40), Color32::from_rgb(40, 45, 52))
-    } else if response.hovered() {
-        (BUTTON_HOVER, TEXT_SECONDARY)
-    } else {
-        (BUTTON_BG, DIALOG_BORDER)
-    };
-    
-    painter.rect(rect, Rounding::same(6.0), bg, Stroke::new(1.0, border));
-    
-    painter.text(
-        rect.center(),
-        Align2::CENTER_CENTER,
-        label,
-        FontId::proportional(12.0),
-        if enabled { TEXT_PRIMARY } else { TEXT_MUTED }
-    );
-    
-    enabled && response.clicked()
-}
-
-fn accent_button(ui: &mut egui::Ui, label: &str, enabled: bool) -> bool {
-    let (rect, response) = ui.allocate_exact_size(Vec2::new(160.0, 36.0), Sense::click());
-    
-    let painter = ui.painter();
-    
-    let bg = if response.hovered() {
-        Color32::from_rgba_unmultiplied(88, 166, 255, 40)
-    } else {
-        Color32::from_rgba_unmultiplied(88, 166, 255, 20)
-    };
-    
-    painter.rect(rect, Rounding::same(8.0), bg, Stroke::new(1.5, ACCENT));
-    
-    painter.text(
-        rect.center(),
-        Align2::CENTER_CENTER,
-        label,
-        FontId::proportional(13.0),
-        ACCENT
-    );
-    
-    enabled && response.clicked()
 }
 
 fn render_match_context(painter: &egui::Painter, pos: egui::Pos2, mat: &SearchMatch, max_width: f32) {
     let font = FontId::monospace(11.0);
-    
     let before = if mat.context_before.len() > 20 {
         format!("…{}", &mat.context_before[mat.context_before.len()-20..])
-    } else {
-        mat.context_before.clone()
-    };
-    
+    } else { mat.context_before.clone() };
     let after = if mat.context_after.len() > 30 {
         format!("{}…", &mat.context_after[..30])
-    } else {
-        mat.context_after.clone()
-    };
-    
+    } else { mat.context_after.clone() };
     let match_text = if mat.match_text.len() > 50 {
         format!("{}…", &mat.match_text[..49])
-    } else {
-        mat.match_text.clone()
-    };
-    
-    let before_width = painter.layout_no_wrap(before.clone(), font.clone(), TEXT_SECONDARY).size().x;
-    let match_width = painter.layout_no_wrap(match_text.clone(), font.clone(), MATCH_HIGHLIGHT).size().x;
-    
+    } else { mat.match_text.clone() };
+
+    let before_width = painter.layout_no_wrap(before.clone(), font.clone(), COL_MUTED).size().x;
+    let match_width  = painter.layout_no_wrap(match_text.clone(), font.clone(), COL_MATCH_HL).size().x;
     let mut x = pos.x;
-    
     if !before.is_empty() {
-        painter.text(egui::pos2(x, pos.y), Align2::LEFT_CENTER, &before, font.clone(), TEXT_SECONDARY);
+        painter.text(egui::pos2(x, pos.y), Align2::LEFT_CENTER, &before, font.clone(), COL_MUTED);
         x += before_width;
     }
-    
-    let match_rect = egui::Rect::from_min_size(
-        egui::pos2(x - 2.0, pos.y - 8.0),
-        Vec2::new(match_width + 4.0, 16.0)
-    );
-    painter.rect_filled(match_rect, Rounding::same(2.0), Color32::from_rgba_unmultiplied(255, 213, 79, 50));
-    painter.text(egui::pos2(x, pos.y), Align2::LEFT_CENTER, &match_text, font.clone(), MATCH_HIGHLIGHT);
+    let mr = egui::Rect::from_min_size(egui::pos2(x - 2.0, pos.y - 8.0), Vec2::new(match_width + 4.0, 16.0));
+    painter.rect_filled(mr, Rounding::same(2.0), Color32::from_rgba_unmultiplied(255, 213, 79, 45));
+    painter.text(egui::pos2(x, pos.y), Align2::LEFT_CENTER, &match_text, font.clone(), COL_MATCH_HL);
     x += match_width;
-    
     if !after.is_empty() && x < pos.x + max_width - 50.0 {
-        painter.text(egui::pos2(x, pos.y), Align2::LEFT_CENTER, &after, font.clone(), TEXT_SECONDARY);
+        painter.text(egui::pos2(x, pos.y), Align2::LEFT_CENTER, &after, font.clone(), COL_MUTED);
     }
 }
 
 // ─── App ─────────────────────────────────────────────────────────────────────
 
 struct LogViewerApp {
-    // Data
-    all_lines:     Vec<LogLine>,
-    filtered:      Vec<usize>,
-    modules:       Vec<String>,
-    counts:        [usize; 5],
-
-    // Simple filter (toolbar)
-    filter_text:   String,
-    module_filter: String,
-    show:          [bool; 5],
-
-    // Display settings
-    row_height:    f32,
-    font_size:     f32,
-    wrap_lines:    bool,
-    selected:      Option<usize>,
-    detail_open:   bool,
-    status:        String,
-    drag_hover:    bool,
-    current_file:  Option<PathBuf>,
-
-    // Scroll state
-    minimap_levels:        Vec<u8>,
-    scroll_to_offset:      Option<f32>,
-    current_scroll_offset: f32,
-    scroll_area_height:    f32,
-
-    // Search
-    search: SearchState,
-    find_dialog_open: bool,
-    find_dialog_tab: FindDialogTab,
-
-    // Navigation panel
-    nav_open:           bool,
-    nav_entries:        Vec<NavEntry>,
-    nav_show_error:     bool,
-    nav_show_warning:   bool,
-    nav_show_teststart: bool,
-    nav_show_testend:   bool,
-    nav_show_step:      bool,
-    nav_show_teardown:  bool,
-    nav_show_custom:    bool,
-    nav_show_bookmark:  bool,
-    nav_custom_kw:      String,
-    nav_custom_kw_buf:  String,
-
-    // Bookmarks
+    all_lines: Vec<LogLine>, filtered: Vec<usize>, modules: Vec<String>, counts: [usize; 5],
+    filter_text: String, module_filter: String, show: [bool; 5],
+    row_height: f32, font_size: f32, wrap_lines: bool,
+    selected: Option<usize>, detail_open: bool, status: String, drag_hover: bool,
+    current_file: Option<PathBuf>,
+    minimap_levels: Vec<u8>,
+    scroll_to_offset: Option<f32>, current_scroll_offset: f32, scroll_area_height: f32,
+    search: SearchState, find_dialog_open: bool,
+    nav_open: bool, nav_entries: Vec<NavEntry>,
+    nav_show_error: bool, nav_show_warning: bool, nav_show_teststart: bool,
+    nav_show_testend: bool, nav_show_step: bool, nav_show_teardown: bool,
+    nav_show_custom: bool, nav_show_bookmark: bool,
+    nav_custom_kw: String, nav_custom_kw_buf: String,
     bookmarks: Vec<usize>,
 }
 
@@ -845,34 +522,20 @@ impl Default for LogViewerApp {
     fn default() -> Self {
         Self {
             all_lines: vec![], filtered: vec![],
-            filter_text: String::new(),
-            show: [true; 5],
+            filter_text: String::new(), show: [true; 5],
             module_filter: String::new(), modules: vec![],
-            counts: [0; 5],
-            row_height: 20.0, font_size: 12.0, wrap_lines: false,
+            counts: [0; 5], row_height: 20.0, font_size: 12.0, wrap_lines: false,
             selected: None, detail_open: false,
-            status: "Ready — Open a log file to begin".into(),
-            drag_hover: false,
-            current_file: None,
+            status: "Ready — drop or open a log file".into(),
+            drag_hover: false, current_file: None,
             minimap_levels: vec![],
-            scroll_to_offset: None,
-            current_scroll_offset: 0.0,
-            scroll_area_height: 0.0,
-            search: SearchState::new(),
-            find_dialog_open: false,
-            find_dialog_tab: FindDialogTab::Find,
-            nav_open: false,
-            nav_entries: vec![],
-            nav_show_error:     true,
-            nav_show_warning:   true,
-            nav_show_teststart: true,
-            nav_show_testend:   true,
-            nav_show_step:      true,
-            nav_show_teardown:  true,
-            nav_show_custom:    true,
-            nav_show_bookmark:  true,
-            nav_custom_kw:     String::new(),
-            nav_custom_kw_buf: String::new(),
+            scroll_to_offset: None, current_scroll_offset: 0.0, scroll_area_height: 0.0,
+            search: SearchState::new(), find_dialog_open: false,
+            nav_open: false, nav_entries: vec![],
+            nav_show_error: true, nav_show_warning: true, nav_show_teststart: true,
+            nav_show_testend: true, nav_show_step: true, nav_show_teardown: true,
+            nav_show_custom: true, nav_show_bookmark: true,
+            nav_custom_kw: String::new(), nav_custom_kw_buf: String::new(),
             bookmarks: vec![],
         }
     }
@@ -883,22 +546,15 @@ impl LogViewerApp {
         self.all_lines = text.lines()
             .filter(|l| !l.trim().is_empty())
             .enumerate()
-            .map(|(i, l)| {
-                let mut ln = parse_log_line(l, i + 1);
-                ln.ts_ms = parse_timestamp_ms(&ln.timestamp);
-                ln
-            })
+            .map(|(i, l)| { let mut ln = parse_log_line(l, i + 1); ln.ts_ms = parse_timestamp_ms(&ln.timestamp); ln })
             .collect();
-
         let mut prev_ms: Option<u64> = None;
         for line in &mut self.all_lines {
             line.delta_ms = match (prev_ms, line.ts_ms) {
-                (Some(p), Some(c)) => Some(c.saturating_sub(p)),
-                _ => None,
+                (Some(p), Some(c)) => Some(c.saturating_sub(p)), _ => None,
             };
             if line.ts_ms.is_some() { prev_ms = line.ts_ms; }
         }
-
         self.counts = [0; 5];
         let mut mod_set: std::collections::BTreeSet<String> = Default::default();
         for l in &self.all_lines {
@@ -907,9 +563,7 @@ impl LogViewerApp {
         }
         self.modules = mod_set.into_iter().collect();
         self.module_filter.clear();
-        self.selected = None;
-        self.detail_open = false;
-        self.current_scroll_offset = 0.0;
+        self.selected = None; self.detail_open = false; self.current_scroll_offset = 0.0;
         self.bookmarks.clear();
         self.apply_filters();
     }
@@ -919,13 +573,10 @@ impl LogViewerApp {
             Ok(text) => {
                 self.load_text(&text);
                 self.current_file = Some(path.clone());
-                self.status = format!(
-                    "{}  —  {} lines",
-                    path.file_name().unwrap_or_default().to_string_lossy(),
-                    self.all_lines.len()
-                );
+                self.status = format!("{}  ·  {} lines",
+                    path.file_name().unwrap_or_default().to_string_lossy(), self.all_lines.len());
             }
-            Err(e) => self.status = format!("Error reading file: {e}"),
+            Err(e) => self.status = format!("Error: {e}"),
         }
     }
 
@@ -939,108 +590,47 @@ impl LogViewerApp {
                     && (mf.is_empty() || l.module == mf)
                     && (filter_lc.is_empty() || l.raw.to_lowercase().contains(&filter_lc))
             })
-            .map(|(i, _)| i)
-            .collect();
-
-        self.minimap_levels = self.filtered.iter()
-            .map(|&i| self.all_lines[i].level.index() as u8)
-            .collect();
-
+            .map(|(i, _)| i).collect();
+        self.minimap_levels = self.filtered.iter().map(|&i| self.all_lines[i].level.index() as u8).collect();
         self.search.find_all(&self.filtered, &self.all_lines);
         self.recompute_nav();
     }
 
-    fn open_find_dialog(&mut self, tab: FindDialogTab) {
-        self.find_dialog_open = true;
-        self.find_dialog_tab = tab;
-    }
-
-    fn close_find_dialog(&mut self) {
-        self.find_dialog_open = false;
-    }
-
     fn do_find_next(&mut self) {
-        self.search.add_to_history();
-        
-        if self.search.matches.is_empty() {
-            self.search.find_all(&self.filtered, &self.all_lines);
-        }
-        
-        if self.search.matches.is_empty() {
-            self.status = "No matches found".to_string();
-            return;
-        }
-        
+        if self.search.matches.is_empty() { self.search.find_all(&self.filtered, &self.all_lines); }
+        if self.search.matches.is_empty() { self.status = "No matches found".to_string(); return; }
         if let Some(row) = self.search.next() {
             self.scroll_to_offset = Some(row as f32 * self.row_height);
-            self.selected = Some(row);
-            self.detail_open = true;
+            self.selected = Some(row); self.detail_open = true;
         }
     }
-    
+
     fn do_find_prev(&mut self) {
         if let Some(row) = self.search.prev() {
             self.scroll_to_offset = Some(row as f32 * self.row_height);
-            self.selected = Some(row);
-            self.detail_open = true;
+            self.selected = Some(row); self.detail_open = true;
         }
     }
-    
-    fn do_count(&mut self) {
-        self.search.find_all(&self.filtered, &self.all_lines);
-        self.status = format!("Found {} matches", self.search.matches.len());
-    }
-    
+
     fn do_find_all_with_results(&mut self) {
-        self.search.add_to_history();
         self.search.find_all(&self.filtered, &self.all_lines);
-        
         if self.search.matches.is_empty() {
             self.status = "No matches found".to_string();
         } else {
             self.search.results_panel_open = true;
-            self.status = format!("Found {} matches", self.search.matches.len());
-            
+            self.status = format!("{} matches", self.search.matches.len());
             if let Some(mat) = self.search.matches.first() {
                 self.scroll_to_offset = Some(mat.row_idx as f32 * self.row_height);
                 self.selected = Some(mat.row_idx);
             }
         }
     }
-    
-    fn do_mark_all(&mut self) {
-        self.search.find_all(&self.filtered, &self.all_lines);
-        
-        if self.search.purge_before_mark {
-            self.bookmarks.clear();
-        }
-        
-        if self.search.bookmark_matches {
-            for mat in &self.search.matches {
-                if !self.is_bookmarked(mat.row_idx) {
-                    self.bookmarks.push(mat.row_idx);
-                }
-            }
-            self.bookmarks.sort_unstable();
-            self.bookmarks.dedup();
-        }
-        
-        self.recompute_nav();
-        self.status = format!("Marked {} lines", self.search.matches.len());
-    }
-    
-    fn do_clear_marks(&mut self) {
-        self.bookmarks.clear();
-        self.recompute_nav();
-        self.status = "All marks cleared".to_string();
-    }
 
     fn toggle_bookmark(&mut self, row_idx: usize) {
         if let Some(pos) = self.bookmarks.iter().position(|&r| r == row_idx) {
             self.bookmarks.remove(pos);
         } else {
-            self.bookmarks.push(row_idx);
-            self.bookmarks.sort_unstable();
+            self.bookmarks.push(row_idx); self.bookmarks.sort_unstable();
         }
         self.recompute_nav();
     }
@@ -1052,57 +642,30 @@ impl LogViewerApp {
     fn recompute_nav(&mut self) {
         self.nav_entries.clear();
         let kw_lc = self.nav_custom_kw.to_lowercase();
-
         for (row_idx, &line_idx) in self.filtered.iter().enumerate() {
             let line = &self.all_lines[line_idx];
             let raw_lc = line.raw.to_lowercase();
-
-            let is_bm = self.is_bookmarked(row_idx);
-            if is_bm {
-                self.nav_entries.push(NavEntry {
-                    kind: NavKind::Bookmark, row_idx, line_num: line.num,
-                    label: trunc(&line.message, 38),
-                });
+            if self.is_bookmarked(row_idx) {
+                self.nav_entries.push(NavEntry { kind: NavKind::Bookmark, row_idx, line_num: line.num, label: trunc(&line.message, 38) });
             }
-
             if matches!(line.level, Level::Error) {
-                self.nav_entries.push(NavEntry { kind: NavKind::Error, row_idx, line_num: line.num, label: trunc(&line.message, 38) });
-                continue;
+                self.nav_entries.push(NavEntry { kind: NavKind::Error, row_idx, line_num: line.num, label: trunc(&line.message, 38) }); continue;
             }
             if matches!(line.level, Level::Warning) {
-                self.nav_entries.push(NavEntry { kind: NavKind::Warning, row_idx, line_num: line.num, label: trunc(&line.message, 38) });
-                continue;
+                self.nav_entries.push(NavEntry { kind: NavKind::Warning, row_idx, line_num: line.num, label: trunc(&line.message, 38) }); continue;
             }
-
-            if raw_lc.contains("test serie started") || raw_lc.contains("test started:")
-                || raw_lc.contains("test case started") || raw_lc.contains("testcase start")
-            {
-                self.nav_entries.push(NavEntry { kind: NavKind::TestStart, row_idx, line_num: line.num, label: trunc(&line.message, 38) });
-                continue;
+            if raw_lc.contains("test serie started") || raw_lc.contains("test started:") || raw_lc.contains("test case started") || raw_lc.contains("testcase start") {
+                self.nav_entries.push(NavEntry { kind: NavKind::TestStart, row_idx, line_num: line.num, label: trunc(&line.message, 38) }); continue;
             }
-
-            if raw_lc.contains("test case status") || raw_lc.contains("test serie ended")
-                || raw_lc.contains("testcase end") || raw_lc.contains("test result:")
-                || (raw_lc.contains("result") && (raw_lc.contains("passed") || raw_lc.contains("failed")))
-            {
-                self.nav_entries.push(NavEntry { kind: NavKind::TestEnd, row_idx, line_num: line.num, label: trunc(&line.message, 38) });
-                continue;
+            if raw_lc.contains("test case status") || raw_lc.contains("test serie ended") || raw_lc.contains("testcase end") || raw_lc.contains("test result:") || (raw_lc.contains("result") && (raw_lc.contains("passed") || raw_lc.contains("failed"))) {
+                self.nav_entries.push(NavEntry { kind: NavKind::TestEnd, row_idx, line_num: line.num, label: trunc(&line.message, 38) }); continue;
             }
-
-            if raw_lc.contains("] step ") || raw_lc.contains("[step]")
-                || (raw_lc.contains("step ") && matches!(line.level, Level::Info))
-            {
-                self.nav_entries.push(NavEntry { kind: NavKind::Step, row_idx, line_num: line.num, label: trunc(&line.message, 38) });
-                continue;
+            if raw_lc.contains("] step ") || raw_lc.contains("[step]") || (raw_lc.contains("step ") && matches!(line.level, Level::Info)) {
+                self.nav_entries.push(NavEntry { kind: NavKind::Step, row_idx, line_num: line.num, label: trunc(&line.message, 38) }); continue;
             }
-
-            if raw_lc.contains("teardown") || raw_lc.contains("tear down")
-                || raw_lc.contains("cleanup") || raw_lc.contains("---teardown---")
-            {
-                self.nav_entries.push(NavEntry { kind: NavKind::Teardown, row_idx, line_num: line.num, label: trunc(&line.message, 38) });
-                continue;
+            if raw_lc.contains("teardown") || raw_lc.contains("tear down") || raw_lc.contains("cleanup") || raw_lc.contains("---teardown---") {
+                self.nav_entries.push(NavEntry { kind: NavKind::Teardown, row_idx, line_num: line.num, label: trunc(&line.message, 38) }); continue;
             }
-
             if !kw_lc.is_empty() && raw_lc.contains(kw_lc.as_str()) {
                 self.nav_entries.push(NavEntry { kind: NavKind::Custom, row_idx, line_num: line.num, label: trunc(&line.message, 38) });
             }
@@ -1127,16 +690,14 @@ impl LogViewerApp {
         {
             let content: String = self.filtered.iter()
                 .filter_map(|&i| self.all_lines.get(i))
-                .map(|l| l.raw.as_str())
-                .collect::<Vec<_>>()
-                .join("\n");
+                .map(|l| l.raw.as_str()).collect::<Vec<_>>().join("\n");
             match std::fs::write(&path, content) {
-                Ok(_)  => self.status = format!("Exported {} lines to {}", self.filtered.len(), path.display()),
+                Ok(_)  => self.status = format!("Exported {} lines", self.filtered.len()),
                 Err(e) => self.status = format!("Export failed: {e}"),
             }
         }
     }
-    
+
     fn export_search_results(&mut self) {
         if let Some(path) = rfd::FileDialog::new()
             .add_filter("Text files", &["txt"])
@@ -1145,138 +706,37 @@ impl LogViewerApp {
             .save_file()
         {
             let is_csv = path.extension().map(|e| e == "csv").unwrap_or(false);
-            
             let content = if is_csv {
                 let mut lines = vec!["Line,Level,Module,Match,Context".to_string()];
                 for mat in &self.search.matches {
-                    lines.push(format!(
-                        "{},{},{},\"{}\",\"{}{}{}\"",
-                        mat.line_num,
-                        mat.level.label(),
-                        mat.module,
+                    lines.push(format!("{},{},{},\"{}\",\"{}{}{}\"",
+                        mat.line_num, mat.level.label(), mat.module,
                         mat.match_text.replace('"', "\"\""),
                         mat.context_before.replace('"', "\"\""),
                         mat.match_text.replace('"', "\"\""),
-                        mat.context_after.replace('"', "\"\"")
-                    ));
+                        mat.context_after.replace('"', "\"\"")));
                 }
                 lines.join("\n")
             } else {
                 let mut lines = vec![
-                    format!("Search Results for: \"{}\"", self.search.find_what),
+                    format!("Search Results: \"{}\"", self.search.find_what),
                     format!("Total matches: {}", self.search.matches.len()),
-                    String::new(),
-                    "─".repeat(80),
-                    String::new(),
+                    String::new(), "─".repeat(80), String::new(),
                 ];
                 for mat in &self.search.matches {
-                    lines.push(format!(
-                        "Line {:>5} │ {:>4} │ {:>12} │ {}",
-                        mat.line_num,
-                        mat.level.label(),
+                    lines.push(format!("Line {:>5} │ {:>4} │ {:>12} │ {}{}{}",
+                        mat.line_num, mat.level.label(),
                         if mat.module.len() > 12 { &mat.module[..12] } else { &mat.module },
-                        format!("{}[{}]{}", mat.context_before, mat.match_text, mat.context_after)
-                    ));
+                        mat.context_before, mat.match_text, mat.context_after));
                 }
                 lines.join("\n")
             };
-            
             match std::fs::write(&path, content) {
-                Ok(_) => self.status = format!("Exported {} matches to {}", self.search.matches.len(), path.display()),
+                Ok(_) => self.status = format!("Exported {} matches", self.search.matches.len()),
                 Err(e) => self.status = format!("Export failed: {e}"),
             }
         }
     }
-}
-
-// ─── UI constants ─────────────────────────────────────────────────────────────
-
-const BG_BASE:      Color32 = Color32::from_rgb(13, 17, 23);
-const BG_PANEL:     Color32 = Color32::from_rgb(20, 25, 32);
-const BG_ROW_HOVER: Color32 = Color32::from_rgba_premultiplied(255, 255, 255, 12);
-const BG_ROW_SEL:   Color32 = Color32::from_rgba_premultiplied(88, 166, 255, 48);
-const COL_BORDER:   Color32 = Color32::from_rgb(42, 48, 58);
-const COL_TEXT:     Color32 = Color32::from_rgb(220, 225, 235);
-const COL_MUTED:    Color32 = Color32::from_rgb(150, 155, 165);
-const COL_FAINT:    Color32 = Color32::from_rgb(90, 95, 105);
-const COL_ACCENT:   Color32 = Color32::from_rgb(88, 166, 255);
-
-const COL_LN:  f32 = 54.0;
-const COL_TS:  f32 = 96.0;
-const COL_DT:  f32 = 76.0;
-const COL_LV:  f32 = 46.0;
-const COL_MOD: f32 = 180.0;
-
-fn dark_visuals() -> egui::Visuals {
-    let mut v = egui::Visuals::dark();
-    v.panel_fill          = BG_PANEL;
-    v.window_fill         = BG_BASE;
-    v.override_text_color = Some(COL_TEXT);
-    v.widgets.inactive.bg_fill   = Color32::from_rgb(30, 36, 45);
-    v.widgets.inactive.bg_stroke = Stroke::new(0.5, COL_BORDER);
-    v.widgets.hovered.bg_fill    = Color32::from_rgb(40, 48, 58);
-    v.widgets.hovered.bg_stroke  = Stroke::new(0.5, Color32::from_gray(85));
-    v.widgets.active.bg_fill     = Color32::from_rgb(55, 65, 80);
-    v.selection.bg_fill          = Color32::from_rgba_unmultiplied(88, 166, 255, 70);
-    v
-}
-
-fn primary_button_ui(text: &str) -> Button<'_> {
-    Button::new(RichText::new(text).color(COL_TEXT).font(FontId::proportional(12.0)))
-        .fill(Color32::from_rgb(40, 50, 65))
-        .stroke(Stroke::new(0.5, COL_BORDER))
-        .rounding(Rounding::same(6.0))
-        .min_size(Vec2::new(0.0, 28.0))
-}
-
-fn accent_button_ui(text: &str) -> Button<'_> {
-    Button::new(RichText::new(text).strong().color(BG_BASE).font(FontId::proportional(12.0)))
-        .fill(COL_ACCENT)
-        .stroke(Stroke::NONE)
-        .rounding(Rounding::same(6.0))
-        .min_size(Vec2::new(0.0, 32.0))
-}
-
-fn icon_button(icon: &str) -> Button<'_> {
-    Button::new(RichText::new(icon).color(COL_MUTED).font(FontId::proportional(14.0)))
-        .fill(Color32::from_rgb(30, 36, 45))
-        .stroke(Stroke::new(0.5, COL_BORDER))
-        .rounding(Rounding::same(6.0))
-        .min_size(Vec2::new(32.0, 28.0))
-        .sense(Sense::click())
-}
-
-fn close_button() -> Button<'static> {
-    Button::new(RichText::new("✕").color(Color32::from_rgb(180, 180, 180)).font(FontId::proportional(14.0)))
-        .fill(Color32::TRANSPARENT)
-        .stroke(Stroke::NONE)
-        .rounding(Rounding::same(4.0))
-        .min_size(Vec2::new(28.0, 28.0))
-}
-
-fn level_toggle(ui: &mut egui::Ui, label: &str, count: usize, active: bool, color: Color32) -> bool {
-    let (fg, bg, stroke) = if active {
-        (color,
-         Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), 35),
-         Stroke::new(1.0, Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), 200)))
-    } else {
-        (Color32::from_gray(90), Color32::from_rgb(20, 25, 32), Stroke::new(0.5, Color32::from_gray(45)))
-    };
-    ui.add(Button::new(
-        RichText::new(format!("{} {}", label, count)).color(fg).font(FontId::monospace(11.0)).strong(),
-    ).fill(bg).stroke(stroke).rounding(Rounding::same(5.0)).min_size(Vec2::new(0.0, 26.0))).clicked()
-}
-
-fn nav_kind_pill(ui: &mut egui::Ui, kind: NavKind) {
-    let col = kind.color();
-    egui::Frame::none()
-        .fill(Color32::from_rgba_unmultiplied(col.r(), col.g(), col.b(), 30))
-        .stroke(Stroke::new(0.5, Color32::from_rgba_unmultiplied(col.r(), col.g(), col.b(), 120)))
-        .rounding(Rounding::same(3.0))
-        .inner_margin(egui::Margin::symmetric(4.0, 1.0))
-        .show(ui, |ui| {
-            ui.label(RichText::new(kind.short_label()).font(FontId::monospace(9.0)).color(col).strong());
-        });
 }
 
 // ─── App::update ─────────────────────────────────────────────────────────────
@@ -1302,8 +762,7 @@ impl App for LogViewerApp {
 
         ctx.input(|i| {
             if i.key_pressed(Key::O) && i.modifiers.ctrl { self.open_file_dialog(); }
-            if i.key_pressed(Key::F) && i.modifiers.ctrl && !self.find_dialog_open { self.open_find_dialog(FindDialogTab::Find); }
-            if i.key_pressed(Key::H) && i.modifiers.ctrl && !self.find_dialog_open { self.open_find_dialog(FindDialogTab::Replace); }
+            if i.key_pressed(Key::F) && i.modifiers.ctrl { self.find_dialog_open = true; }
             if i.key_pressed(Key::N) && i.modifiers.ctrl { self.nav_open = !self.nav_open; }
             if i.key_pressed(Key::B) && i.modifiers.ctrl { if let Some(sel) = self.selected { self.toggle_bookmark(sel); } }
             if i.key_pressed(Key::W) && i.modifiers.ctrl { self.wrap_lines = !self.wrap_lines; }
@@ -1311,212 +770,292 @@ impl App for LogViewerApp {
 
         ctx.input(|i| {
             if i.key_pressed(Key::Escape) {
-                if self.search.results_panel_open {
-                    self.search.results_panel_open = false;
-                } else if self.find_dialog_open {
-                    self.close_find_dialog();
-                } else if !self.filter_text.is_empty() {
-                    self.filter_text.clear();
-                    self.apply_filters();
-                } else {
-                    self.selected = None;
-                    self.detail_open = false;
-                }
+                if self.search.results_panel_open { self.search.results_panel_open = false; }
+                else if self.find_dialog_open { self.find_dialog_open = false; }
+                else if !self.filter_text.is_empty() { self.filter_text.clear(); self.apply_filters(); }
+                else { self.selected = None; self.detail_open = false; }
             }
             if i.key_pressed(Key::F3) {
                 if i.modifiers.shift { self.do_find_prev(); } else { self.do_find_next(); }
             }
         });
 
-        // Menu bar
+        // ── Menu bar ─────────────────────────────────────────────────────────
         egui::TopBottomPanel::top("menubar")
-            .frame(egui::Frame::none().fill(BG_PANEL).stroke(Stroke::new(1.0, COL_BORDER)))
+            .exact_height(32.0)
+            .frame(egui::Frame::none()
+                .fill(Color32::from_rgb(14, 18, 26))
+                .stroke(Stroke::new(1.0, COL_BORDER)))
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing.x = 16.0;
+                    ui.spacing_mut().item_spacing.x = 2.0;
+                    ui.add_space(8.0);
 
-                    ui.menu_button("File", |ui| {
-                        if ui.button("Open…  Ctrl+O").clicked() { self.open_file_dialog(); ui.close_menu(); }
-                        if ui.button("Export Filtered…").clicked() { self.export_filtered(); ui.close_menu(); }
-                        ui.separator();
-                        if ui.button("Clear").clicked() { self.clear_file(); ui.close_menu(); }
-                        ui.separator();
-                        if ui.button("Exit").clicked() { ctx.send_viewport_cmd(egui::ViewportCommand::Close); }
-                    });
+                    // ── File ─────────────────────────────────────────────────
+                    ui.menu_button(
+                        RichText::new("File").font(FontId::proportional(12.0)).color(COL_MUTED),
+                    |ui| {
+                        ui.set_min_width(200.0);
+                        ui.spacing_mut().item_spacing.y = 2.0;
 
-                    ui.menu_button("Search", |ui| {
-                        if ui.button("Find…  Ctrl+F").clicked() { self.open_find_dialog(FindDialogTab::Find); ui.close_menu(); }
-                        if ui.button("Replace…  Ctrl+H").clicked() { self.open_find_dialog(FindDialogTab::Replace); ui.close_menu(); }
-                        ui.separator();
-                        if ui.button("Find Next  F3").clicked() { self.do_find_next(); ui.close_menu(); }
-                        if ui.button("Find Previous  Shift+F3").clicked() { self.do_find_prev(); ui.close_menu(); }
-                    });
-
-                    ui.menu_button("View", |ui| {
-                        if ui.checkbox(&mut self.nav_open, "Navigation Panel  Ctrl+N").clicked() { ui.close_menu(); }
-                        if ui.checkbox(&mut self.wrap_lines, "Wrap Lines  Ctrl+W").clicked() { ui.close_menu(); }
-                        ui.separator();
-                        ui.label("Level Filters:");
-                        for (idx, name) in ["Error", "Warning", "Info", "Debug", "Trace"].iter().enumerate() {
-                            if ui.checkbox(&mut self.show[idx], *name).clicked() {
-                                self.apply_filters(); ui.close_menu();
-                            }
+                        if ui.add(menu_item("📂", "Open…", "Ctrl+O")).clicked() {
+                            self.open_file_dialog(); ui.close_menu();
                         }
-                    });
-
-                    ui.menu_button("Bookmark", |ui| {
-                        if ui.button("Toggle Bookmark  Ctrl+B").clicked() {
-                            if let Some(sel) = self.selected { self.toggle_bookmark(sel); }
+                        if ui.add(menu_item("🔄", "Reload", "")).clicked() {
+                            if let Some(path) = self.current_file.clone() { self.load_file(&path); }
                             ui.close_menu();
                         }
-                        if ui.button("Clear All Bookmarks").clicked() {
-                            self.bookmarks.clear(); self.recompute_nav(); ui.close_menu();
+                        ui.add(egui::Separator::default().spacing(4.0));
+                        let has_file = !self.all_lines.is_empty();
+                        ui.add_enabled_ui(has_file, |ui| {
+                            if ui.add(menu_item("💾", "Export Filtered…", "")).clicked() {
+                                self.export_filtered(); ui.close_menu();
+                            }
+                            if ui.add(menu_item("📋", "Export Search Results…", "")).clicked() {
+                                self.export_search_results(); ui.close_menu();
+                            }
+                        });
+                        ui.add(egui::Separator::default().spacing(4.0));
+                        if ui.add(menu_item("🗑", "Clear", "")).clicked() {
+                            self.clear_file(); ui.close_menu();
+                        }
+                        ui.add(egui::Separator::default().spacing(4.0));
+                        if ui.add(menu_item("✕", "Exit", "Alt+F4")).clicked() {
+                            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
                         }
                     });
 
-                    ui.menu_button("Help", |ui| {
-                        ui.label(RichText::new("Keyboard Shortcuts").font(FontId::monospace(10.0)).color(COL_FAINT).strong());
-                        ui.separator();
+                    // ── Help ─────────────────────────────────────────────────
+                    ui.menu_button(
+                        RichText::new("Help").font(FontId::proportional(12.0)).color(COL_MUTED),
+                    |ui| {
+                        ui.set_min_width(230.0);
+                        ui.spacing_mut().item_spacing.y = 1.0;
+                        ui.add_space(4.0);
+                        ui.label(RichText::new("KEYBOARD SHORTCUTS").font(FontId::monospace(9.5)).color(COL_FAINT));
+                        ui.add_space(6.0);
                         for (k, v) in [
-                            ("Ctrl+O", "Open file"),
-                            ("Ctrl+F", "Find"),
-                            ("Ctrl+H", "Replace"),
-                            ("Ctrl+N", "Navigation panel"),
-                            ("Ctrl+B", "Toggle bookmark"),
-                            ("Ctrl+W", "Wrap lines"),
-                            ("F3",     "Find next"),
-                            ("Shift+F3", "Find previous"),
-                            ("Esc",    "Close dialog / Clear filter"),
+                            ("Ctrl+O",     "Open file"),
+                            ("Ctrl+F",     "Find & Replace dialog"),
+                            ("F3",         "Find next match"),
+                            ("Shift+F3",   "Find previous match"),
+                            ("Ctrl+N",     "Toggle navigation panel"),
+                            ("Ctrl+B",     "Toggle bookmark on row"),
+                            ("Ctrl+W",     "Toggle line wrap"),
+                            ("Esc",        "Close dialogs / clear filter"),
+                            ("Dbl-click",  "Toggle bookmark on row"),
                         ] {
                             ui.horizontal(|ui| {
-                                ui.label(RichText::new(k).font(FontId::monospace(10.5)).color(COL_ACCENT));
+                                ui.set_min_width(220.0);
+                                let kw = painter_shortcut_key(k);
+                                ui.add_sized([90.0, 20.0], egui::Label::new(
+                                    RichText::new(kw).font(FontId::monospace(10.0)).color(COL_ACCENT)
+                                ));
                                 ui.label(RichText::new(v).font(FontId::proportional(11.0)).color(COL_TEXT));
                             });
                         }
+                        ui.add_space(4.0);
                     });
                 });
             });
 
-        // Toolbar
+        // ── Toolbar ──────────────────────────────────────────────────────────
         egui::TopBottomPanel::top("toolbar")
-            .frame(egui::Frame::none().fill(BG_PANEL).inner_margin(egui::Margin::symmetric(12.0, 8.0)))
+            .exact_height(50.0)
+            .frame(egui::Frame::none()
+                .fill(BG_PANEL)
+                .stroke(Stroke::new(1.0, COL_BORDER))
+                .inner_margin(egui::Margin::symmetric(12.0, 0.0)))
             .show(ctx, |ui| {
-                ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing.x = 12.0;
+                ui.vertical_centered_justified(|ui| {
+                    ui.add_space(10.0);
+                    ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing.x = 10.0;
 
-                    let re = ui.add(
-                        egui::TextEdit::singleline(&mut self.filter_text)
-                            .hint_text(RichText::new("🔍 Filter view…").color(COL_FAINT))
-                            .desired_width(200.0)
-                            .font(FontId::monospace(12.0))
-                    );
-                    if re.changed() { self.apply_filters(); }
+                        // ── Search input ──────────────────────────────────────
+                        let search_w = 220.0;
+                        let filter_active = !self.filter_text.is_empty();
+                        let search_h = 30.0;
 
-                    if !self.modules.is_empty() {
-                        ui.add(egui::Separator::default().vertical().spacing(8.0));
-                        let label = if self.module_filter.is_empty() { "All modules".to_string() }
-                            else if self.module_filter.len() > 20 { format!("…{}", &self.module_filter[self.module_filter.len().saturating_sub(18)..]) }
-                            else { self.module_filter.clone() };
-                        let mut changed = false;
-                        egui::ComboBox::from_id_source("mod_cb")
-                            .selected_text(RichText::new(label).font(FontId::proportional(12.0)).color(COL_TEXT))
-                            .width(160.0)
-                            .show_ui(ui, |ui| {
-                                if ui.selectable_label(self.module_filter.is_empty(), "All modules").clicked() { self.module_filter.clear(); changed = true; }
-                                for m in self.modules.clone() {
-                                    let d = if m.len() > 30 { format!("…{}", &m[m.len()-28..]) } else { m.clone() };
-                                    if ui.selectable_label(self.module_filter == m, d).clicked() { self.module_filter = m; changed = true; }
-                                }
-                            });
-                        if changed { self.apply_filters(); }
-                    }
+                        let (outer_rect, _) = ui.allocate_exact_size(
+                            Vec2::new(search_w, search_h), Sense::hover()
+                        );
 
-                    ui.add(egui::Separator::default().vertical().spacing(8.0));
+                        let border_col = if filter_active { COL_ACCENT } else { COL_BORDER_HL };
+                        let fill_col   = Color32::from_rgb(10, 13, 20);
 
-                    let defs: [(usize, &str, Color32); 5] = [
-                        (0,"ERR",Level::Error.color()),(1,"WRN",Level::Warning.color()),
-                        (2,"INF",Level::Info.color()),(3,"DBG",Level::Debug.color()),(4,"TRC",Level::Trace.color()),
-                    ];
-                    let mut fc2 = false;
-                    for (idx,lbl,color) in defs {
-                        if level_toggle(ui,lbl,self.counts[idx],self.show[idx],color) { self.show[idx]=!self.show[idx]; fc2=true; }
-                    }
-                    if fc2 { self.apply_filters(); }
+                        ui.painter().rect(outer_rect, Rounding::same(8.0), fill_col,
+                            Stroke::new(1.0, border_col));
 
-                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        ui.spacing_mut().item_spacing.x = 8.0;
+                        // magnifier icon
+                        let icon_col = if filter_active { COL_ACCENT } else { COL_FAINT };
+                        ui.painter().text(
+                            egui::pos2(outer_rect.min.x + 11.0, outer_rect.center().y),
+                            Align2::LEFT_CENTER, "⌕",
+                            FontId::proportional(15.0), icon_col
+                        );
 
-                        if self.all_lines.is_empty() {
-                            if ui.add(accent_button_ui("📂 Open File")).clicked() { self.open_file_dialog(); }
-                        } else {
-                            if ui.add(primary_button_ui("📂 Open")).clicked() { self.open_file_dialog(); }
+                        // clear × button
+                        let show_clear = filter_active;
+                        let text_right_pad = if show_clear { 26.0 } else { 8.0 };
+
+                        let text_rect = egui::Rect::from_min_max(
+                            egui::pos2(outer_rect.min.x + 26.0, outer_rect.min.y + 2.0),
+                            egui::pos2(outer_rect.max.x - text_right_pad, outer_rect.max.y - 2.0),
+                        );
+
+                        let te_resp = ui.put(text_rect, 
+                            TextEdit::singleline(&mut self.filter_text)
+                                .hint_text(RichText::new("Filter lines…").color(COL_FAINT))
+                                .frame(false)
+                                .font(FontId::monospace(12.0))
+                        );
+                        if te_resp.changed() { self.apply_filters(); }
+
+                        if show_clear {
+                            let x_rect = egui::Rect::from_center_size(
+                                egui::pos2(outer_rect.max.x - 13.0, outer_rect.center().y),
+                                Vec2::splat(18.0)
+                            );
+                            let x_resp = ui.interact(x_rect, egui::Id::new("filter_clear"), Sense::click());
+                            let x_col = if x_resp.hovered() { COL_TEXT } else { COL_MUTED };
+                            ui.painter().text(x_rect.center(), Align2::CENTER_CENTER, "✕",
+                                FontId::proportional(11.0), x_col);
+                            if x_resp.clicked() { self.filter_text.clear(); self.apply_filters(); }
                         }
 
-                        if !self.all_lines.is_empty() {
-                            if ui.add(primary_button_ui("🗑 Clear")).clicked() { self.clear_file(); }
-                            ui.add(egui::Separator::default().vertical().spacing(8.0));
+                        // ── Module filter ─────────────────────────────────────
+                        if !self.modules.is_empty() {
+                            let label = if self.module_filter.is_empty() { "All modules".to_string() }
+                                else if self.module_filter.len() > 18 {
+                                    format!("…{}", &self.module_filter[self.module_filter.len().saturating_sub(16)..])
+                                } else { self.module_filter.clone() };
+                            let mut changed = false;
+                            egui::ComboBox::from_id_source("mod_cb")
+                                .selected_text(RichText::new(label).font(FontId::proportional(11.5)).color(COL_TEXT))
+                                .width(155.0)
+                                .show_ui(ui, |ui| {
+                                    if ui.selectable_label(self.module_filter.is_empty(),
+                                        RichText::new("All modules").color(COL_MUTED).font(FontId::proportional(11.5))
+                                    ).clicked() { self.module_filter.clear(); changed = true; }
+                                    for m in self.modules.clone() {
+                                        let d = if m.len() > 28 { format!("…{}", &m[m.len()-26..]) } else { m.clone() };
+                                        if ui.selectable_label(self.module_filter == m,
+                                            RichText::new(d).font(FontId::proportional(11.5))
+                                        ).clicked() { self.module_filter = m; changed = true; }
+                                    }
+                                });
+                            if changed { self.apply_filters(); }
 
+                            ui.add(egui::Separator::default().vertical().spacing(6.0));
+                        }
+
+                        // ── Level toggles ─────────────────────────────────────
+                        let defs: [(usize, &str, Color32); 5] = [
+                            (0,"ERR",Level::Error.color()),(1,"WRN",Level::Warning.color()),
+                            (2,"INF",Level::Info.color()),(3,"DBG",Level::Debug.color()),(4,"TRC",Level::Trace.color()),
+                        ];
+                        let mut fc = false;
+                        for (idx, lbl, color) in defs {
+                            if level_toggle(ui, lbl, self.counts[idx], self.show[idx], color) {
+                                self.show[idx] = !self.show[idx]; fc = true;
+                            }
+                        }
+                        if fc { self.apply_filters(); }
+
+                        // ── Right-side controls ───────────────────────────────
+                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                            ui.spacing_mut().item_spacing.x = 8.0;
+
+                            if self.all_lines.is_empty() {
+                                if ui.add(accent_button_ui("📂 Open File")).clicked() { self.open_file_dialog(); }
+                            } else {
+                                if ui.add(ghost_button("📂 Open")).clicked() { self.open_file_dialog(); }
+                                if ui.add(ghost_button("🗑 Clear")).clicked() { self.clear_file(); }
+                            }
+
+                            ui.add(egui::Separator::default().vertical().spacing(6.0));
+
+                            let nav_active = self.nav_open;
+                            let nav_cnt = self.nav_entries.len();
+                            let nav_lbl = if nav_cnt > 0 { format!("Nav  {}", nav_cnt) } else { "Nav".into() };
+                            let (nav_fg, nav_fill, nav_stroke) = if nav_active {
+                                (COL_ACCENT,
+                                 Color32::from_rgba_unmultiplied(88, 166, 255, 20),
+                                 Stroke::new(1.0, Color32::from_rgba_unmultiplied(88, 166, 255, 140)))
+                            } else {
+                                (COL_MUTED, Color32::from_rgb(24, 30, 40), Stroke::new(0.5, COL_BORDER))
+                            };
+                            if ui.add(Button::new(RichText::new(nav_lbl).color(nav_fg).font(FontId::proportional(11.5)))
+                                .fill(nav_fill).stroke(nav_stroke).rounding(Rounding::same(7.0))
+                                .min_size(Vec2::new(0.0, 30.0)))
+                                .on_hover_text("Navigation panel  Ctrl+N").clicked()
+                            { self.nav_open = !self.nav_open; }
+
+                            let wrap_lbl = if self.wrap_lines { "↩ Wrap" } else { "→ Wrap" };
                             let wrap_col = if self.wrap_lines { COL_ACCENT } else { COL_MUTED };
-                            let wrap_txt = if self.wrap_lines { "↩ Wrap" } else { "→ No Wrap" };
-                            if ui.add(Button::new(RichText::new(wrap_txt).color(wrap_col).font(FontId::proportional(11.0)))
-                                .fill(Color32::from_rgb(30,36,45)).stroke(Stroke::new(0.5,COL_BORDER))
-                                .rounding(Rounding::same(6.0)).min_size(Vec2::new(0.0,28.0))).clicked()
+                            if ui.add(Button::new(RichText::new(wrap_lbl).color(wrap_col).font(FontId::proportional(11.5)))
+                                .fill(Color32::from_rgb(24, 30, 40))
+                                .stroke(Stroke::new(0.5, if self.wrap_lines { Color32::from_rgba_unmultiplied(88, 166, 255, 100) } else { COL_BORDER }))
+                                .rounding(Rounding::same(7.0)).min_size(Vec2::new(0.0, 30.0)))
+                                .on_hover_text("Toggle line wrap  Ctrl+W").clicked()
                             { self.wrap_lines = !self.wrap_lines; }
-                        }
 
-                        ui.add(egui::Separator::default().vertical().spacing(8.0));
+                            ui.add(egui::Separator::default().vertical().spacing(6.0));
 
-                        let nav_col = if self.nav_open { COL_ACCENT } else { COL_MUTED };
-                        let nav_lbl = if !self.nav_entries.is_empty() {
-                            format!("⊟ Nav {}", self.nav_entries.len())
-                        } else { "⊟ Nav".to_string() };
-                        if ui.add(Button::new(RichText::new(nav_lbl).color(nav_col).font(FontId::proportional(12.0)))
-                            .fill(if self.nav_open { Color32::from_rgba_unmultiplied(88,166,255,22) } else { Color32::from_rgb(30,36,45) })
-                            .stroke(Stroke::new(if self.nav_open {1.0} else {0.5}, if self.nav_open { Color32::from_rgba_unmultiplied(88,166,255,160) } else { COL_BORDER }))
-                            .rounding(Rounding::same(6.0)).min_size(Vec2::new(0.0,28.0)))
-                            .on_hover_text("Navigation panel (Ctrl+N)").clicked()
-                        { self.nav_open = !self.nav_open; }
-
-                        ui.add(egui::Separator::default().vertical().spacing(8.0));
-                        if ui.add(icon_button("A+")).on_hover_text("Increase font size").clicked() { self.font_size=(self.font_size+1.0).min(20.0); self.row_height=self.font_size+8.0; }
-                        if ui.add(icon_button("A-")).on_hover_text("Decrease font size").clicked() { self.font_size=(self.font_size-1.0).max(9.0); self.row_height=self.font_size+8.0; }
+                            if ui.add(icon_button("A+")).on_hover_text("Larger font").clicked() {
+                                self.font_size = (self.font_size + 1.0).min(20.0);
+                                self.row_height = self.font_size + 8.0;
+                            }
+                            if ui.add(icon_button("A-")).on_hover_text("Smaller font").clicked() {
+                                self.font_size = (self.font_size - 1.0).max(9.0);
+                                self.row_height = self.font_size + 8.0;
+                            }
+                        });
                     });
                 });
             });
 
-        // Find Dialog
+        // ── Find Dialog ───────────────────────────────────────────────────────
         self.render_find_dialog(ctx);
-        
-        // Results Panel
+
+        // ── Results panel ─────────────────────────────────────────────────────
         self.render_results_panel(ctx);
 
-        // Status bar
+        // ── Status bar ────────────────────────────────────────────────────────
         egui::TopBottomPanel::bottom("statusbar")
-            .frame(egui::Frame::none().fill(BG_PANEL).stroke(Stroke::new(1.0,COL_BORDER)).inner_margin(egui::Margin::symmetric(12.0,6.0)))
+            .exact_height(28.0)
+            .frame(egui::Frame::none()
+                .fill(Color32::from_rgb(14, 18, 26))
+                .stroke(Stroke::new(1.0, COL_BORDER))
+                .inner_margin(egui::Margin::symmetric(14.0, 0.0)))
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing.x = 16.0;
-                    let mk = |n: usize, s: &str, c: Color32| RichText::new(format!("{} {}", n, s)).color(c).font(FontId::monospace(11.0));
-                    ui.label(mk(self.counts[0],"errors",Level::Error.color()));
-                    ui.label(mk(self.counts[1],"warnings",Level::Warning.color()));
-                    ui.label(mk(self.counts[2],"info",Level::Info.color()));
-                    ui.label(mk(self.counts[3],"debug",Level::Debug.color()));
-                    ui.label(mk(self.counts[4],"trace",Level::Trace.color()));
+                    ui.spacing_mut().item_spacing.x = 14.0;
+                    let mk = |n: usize, s: &str, c: Color32|
+                        RichText::new(format!("{} {}", n, s)).color(c).font(FontId::monospace(10.5));
+                    ui.label(mk(self.counts[0], "errors",   Level::Error.color()));
+                    ui.label(mk(self.counts[1], "warnings", Level::Warning.color()));
+                    ui.label(mk(self.counts[2], "info",     Level::Info.color()));
+                    ui.label(mk(self.counts[3], "debug",    Level::Debug.color()));
+                    ui.label(mk(self.counts[4], "trace",    Level::Trace.color()));
                     if !self.search.matches.is_empty() {
-                        ui.add(egui::Separator::default().vertical().spacing(8.0));
-                        ui.label(RichText::new(format!("Match {}/{}", self.search.current_match_idx + 1, self.search.matches.len()))
-                            .color(COL_ACCENT).font(FontId::monospace(11.0)));
+                        ui.add(egui::Separator::default().vertical().spacing(6.0));
+                        ui.label(RichText::new(format!(
+                            "Match {}/{}", self.search.current_match_idx + 1, self.search.matches.len()
+                        )).color(COL_ACCENT).font(FontId::monospace(10.5)));
                     }
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        ui.label(RichText::new(format!("{} / {} lines shown", self.filtered.len(), self.all_lines.len()))
-                            .color(COL_MUTED).font(FontId::monospace(11.0)));
-                        ui.add(egui::Separator::default().vertical().spacing(8.0));
-                        ui.label(RichText::new(&self.status).color(COL_MUTED).font(FontId::monospace(11.0)));
+                        ui.label(RichText::new(format!("{} / {} lines",
+                            self.filtered.len(), self.all_lines.len()
+                        )).color(COL_FAINT).font(FontId::monospace(10.5)));
+                        ui.add(egui::Separator::default().vertical().spacing(6.0));
+                        ui.label(RichText::new(&self.status).color(COL_MUTED).font(FontId::monospace(10.5)));
                     });
                 });
             });
 
-        // Detail panel
+        // ── Detail panel ──────────────────────────────────────────────────────
         if self.detail_open {
             let sel: Option<LogLine> = self.selected
                 .and_then(|r| self.filtered.get(r).copied())
@@ -1524,22 +1063,24 @@ impl App for LogViewerApp {
 
             if let Some(line) = sel {
                 egui::TopBottomPanel::bottom("detail_panel")
-                    .resizable(true).default_height(160.0).min_height(80.0)
-                    .frame(egui::Frame::none().fill(Color32::from_rgb(14,19,27))
-                        .stroke(Stroke::new(1.0,COL_BORDER)).inner_margin(egui::Margin::symmetric(14.0,10.0)))
+                    .resizable(true).default_height(155.0).min_height(80.0)
+                    .frame(egui::Frame::none()
+                        .fill(Color32::from_rgb(11, 15, 22))
+                        .stroke(Stroke::new(1.0, COL_BORDER))
+                        .inner_margin(egui::Margin::symmetric(14.0, 10.0)))
                     .show(ctx, |ui| {
                         ui.horizontal(|ui| {
-                            ui.label(RichText::new("LINE DETAIL").font(FontId::monospace(10.0)).color(COL_FAINT).strong());
+                            ui.label(RichText::new("LINE DETAIL").font(FontId::monospace(9.5)).color(COL_FAINT).strong());
                             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                ui.spacing_mut().item_spacing.x = 8.0;
+                                ui.spacing_mut().item_spacing.x = 6.0;
                                 let mut close = false;
                                 if ui.add(close_button()).on_hover_text("Close (Esc)").clicked() { close = true; }
                                 let is_bm = self.is_bookmarked(self.selected.unwrap_or(0));
                                 let bm_text = if is_bm { "♥ Bookmarked" } else { "♡ Bookmark" };
-                                let bm_col  = if is_bm { Color32::from_rgb(255,140,200) } else { COL_MUTED };
+                                let bm_col  = if is_bm { Color32::from_rgb(255, 140, 200) } else { COL_MUTED };
                                 if ui.add(Button::new(RichText::new(bm_text).color(bm_col).font(FontId::proportional(11.0)))
-                                    .fill(Color32::from_rgb(30,36,45)).stroke(Stroke::new(0.5,COL_BORDER))
-                                    .rounding(Rounding::same(6.0)).min_size(Vec2::new(0.0,28.0)))
+                                    .fill(Color32::from_rgb(24, 30, 40)).stroke(Stroke::new(0.5, COL_BORDER))
+                                    .rounding(Rounding::same(6.0)).min_size(Vec2::new(0.0, 26.0)))
                                     .on_hover_text("Toggle bookmark (Ctrl+B)").clicked() {
                                     if let Some(sel) = self.selected { self.toggle_bookmark(sel); }
                                 }
@@ -1550,95 +1091,105 @@ impl App for LogViewerApp {
                             });
                         });
                         ui.add_space(5.0);
-                        ui.add(egui::Separator::default().horizontal().spacing(3.0));
+                        ui.add(egui::Separator::default().horizontal().spacing(2.0));
                         ui.add_space(4.0);
-                        egui::Grid::new("detail_grid").num_columns(4).spacing([20.0,5.0]).show(ui, |ui| {
-                            let lbl = |s: &str| RichText::new(s).color(COL_FAINT).font(FontId::monospace(10.0));
+                        egui::Grid::new("detail_grid").num_columns(4).spacing([20.0, 4.0]).show(ui, |ui| {
+                            let lbl = |s: &str| RichText::new(s).color(COL_FAINT).font(FontId::monospace(9.5));
                             let val = |s: String| RichText::new(s).color(COL_TEXT).font(FontId::monospace(11.0));
                             ui.label(lbl("LINE")); ui.label(val(line.num.to_string()));
                             ui.label(lbl("LEVEL")); ui.label(RichText::new(line.level.label()).color(line.level.color()).strong().font(FontId::monospace(11.0)));
                             ui.end_row();
                             ui.label(lbl("TIME")); ui.label(val(line.timestamp.clone()));
-                            ui.label(lbl("Δ TIME")); ui.label(val(line.delta_ms.map(format_delta).unwrap_or_else(||"—".into())));
+                            ui.label(lbl("Δ TIME")); ui.label(val(line.delta_ms.map(format_delta).unwrap_or_else(|| "—".into())));
                             ui.end_row();
                             ui.label(lbl("MODULE")); ui.label(val(line.module.clone()));
                             ui.label(lbl("")); ui.label(val(String::new()));
                             ui.end_row();
                         });
-                        ui.add_space(6.0);
-                        ui.label(RichText::new("MESSAGE").color(COL_FAINT).font(FontId::monospace(10.0)));
-                        ui.add_space(3.0);
-                        ScrollArea::vertical().id_source("detail_scroll").max_height(60.0).show(ui, |ui| {
+                        ui.add_space(5.0);
+                        ui.label(RichText::new("MESSAGE").color(COL_FAINT).font(FontId::monospace(9.5)));
+                        ui.add_space(2.0);
+                        ScrollArea::vertical().id_source("detail_scroll").max_height(55.0).show(ui, |ui| {
                             ui.label(RichText::new(&line.message).font(FontId::monospace(11.5)).color(COL_TEXT));
                         });
                     });
             }
         }
 
-        // Minimap
+        // ── Minimap ───────────────────────────────────────────────────────────
         if !self.all_lines.is_empty() {
-            let n_filt=self.filtered.len(); let row_h=self.row_height;
-            let scroll_off=self.current_scroll_offset; let viewport_h=self.scroll_area_height;
-            let ml=self.minimap_levels.clone();
-            let mut jump_to_offset:Option<f32>=None;
+            let n_filt = self.filtered.len();
+            let row_h = self.row_height;
+            let scroll_off = self.current_scroll_offset;
+            let viewport_h = self.scroll_area_height;
+            let ml = self.minimap_levels.clone();
+            let mut jump_to_offset: Option<f32> = None;
 
-            const MM:[Color32;5]=[
-                Color32::from_rgb(245,95,85),Color32::from_rgb(235,180,55),
-                Color32::from_rgb(70,200,95),Color32::from_rgb(95,165,245),Color32::from_rgb(125,130,145)
+            const MM: [Color32; 5] = [
+                Color32::from_rgb(245, 95, 85), Color32::from_rgb(235, 180, 55),
+                Color32::from_rgb(70, 200, 95), Color32::from_rgb(95, 165, 245),
+                Color32::from_rgb(115, 120, 135),
             ];
 
-            egui::SidePanel::right("minimap_panel").exact_width(32.0).resizable(false)
-                .frame(egui::Frame::none().fill(Color32::from_rgb(10,13,18)))
+            egui::SidePanel::right("minimap_panel").exact_width(30.0).resizable(false)
+                .frame(egui::Frame::none().fill(Color32::from_rgb(9, 12, 17)))
                 .show(ctx, |ui| {
-                    let avail=ui.available_rect_before_wrap();
-                    let (resp,painter)=ui.allocate_painter(avail.size(),Sense::click_and_drag());
-                    let r=resp.rect;
-                    painter.rect_filled(r,Rounding::ZERO,Color32::from_rgb(10,13,18));
-                    painter.rect_filled(egui::Rect::from_min_max(r.left_top(),egui::pos2(r.min.x+1.0,r.max.y)),Rounding::ZERO,COL_BORDER);
-                    if n_filt==0 { return; }
-                    let (bx0,bx1,by0,ah)=(r.min.x+2.0,r.max.x-2.0,r.min.y,r.height());
+                    let avail = ui.available_rect_before_wrap();
+                    let (resp, painter) = ui.allocate_painter(avail.size(), Sense::click_and_drag());
+                    let r = resp.rect;
+                    painter.rect_filled(r, Rounding::ZERO, Color32::from_rgb(9, 12, 17));
+                    painter.rect_filled(
+                        egui::Rect::from_min_max(r.left_top(), egui::pos2(r.min.x + 1.0, r.max.y)),
+                        Rounding::ZERO, COL_BORDER);
+                    if n_filt == 0 { return; }
+                    let (bx0, bx1, by0, ah) = (r.min.x + 2.0, r.max.x - 2.0, r.min.y, r.height());
                     for py in 0..ah as usize {
-                        let i0=((py as f32*n_filt as f32/ah) as usize).min(n_filt-1);
-                        let i1=(((py+1) as f32*n_filt as f32/ah) as usize).min(n_filt-1).max(i0);
-                        let bucket=(i1-i0+1) as f32;
-                        let mut counts=[0u16;5];
-                        for i in i0..=i1 { counts[ml[i] as usize]+=1; }
-                        let dom=(0..5).find(|&l| counts[l] as f32/bucket>=0.20)
-                            .unwrap_or_else(|| counts.iter().enumerate().max_by(|(ia,&ca),(ib,&cb)| ca.cmp(&cb).then(ib.cmp(ia))).map(|(i,_)| i).unwrap_or(4));
-                        let y0=by0+py as f32;
-                        painter.rect_filled(egui::Rect::from_min_max(egui::pos2(bx0,y0),egui::pos2(bx1,y0+1.5)),Rounding::ZERO,MM[dom]);
+                        let i0 = ((py as f32 * n_filt as f32 / ah) as usize).min(n_filt - 1);
+                        let i1 = (((py + 1) as f32 * n_filt as f32 / ah) as usize).min(n_filt - 1).max(i0);
+                        let bucket = (i1 - i0 + 1) as f32;
+                        let mut counts = [0u16; 5];
+                        for i in i0..=i1 { counts[ml[i] as usize] += 1; }
+                        let dom = (0..5).find(|&l| counts[l] as f32 / bucket >= 0.20)
+                            .unwrap_or_else(|| counts.iter().enumerate()
+                                .max_by(|(ia, &ca), (ib, &cb)| ca.cmp(&cb).then(ib.cmp(ia)))
+                                .map(|(i, _)| i).unwrap_or(4));
+                        let y0 = by0 + py as f32;
+                        painter.rect_filled(
+                            egui::Rect::from_min_max(egui::pos2(bx0, y0), egui::pos2(bx1, y0 + 1.5)),
+                            Rounding::ZERO, MM[dom]);
                     }
-                    let total_h=n_filt as f32*row_h;
-                    if total_h>0.0 && viewport_h>0.0 {
-                        let vt=(scroll_off/total_h).clamp(0.0,1.0);
-                        let vb=((scroll_off+viewport_h)/total_h).clamp(0.0,1.0);
-                        let wy0=(by0+vt*ah).min(r.max.y-4.0);
-                        let wy1=(by0+vb*ah).clamp(wy0+4.0,r.max.y);
-                        painter.rect(egui::Rect::from_min_max(egui::pos2(r.min.x+0.5,wy0),egui::pos2(r.max.x-0.5,wy1)),
-                            Rounding::same(2.0),Color32::from_rgba_unmultiplied(200,225,255,18),
-                            Stroke::new(1.0,Color32::from_rgba_unmultiplied(200,225,255,130)));
+                    let total_h = n_filt as f32 * row_h;
+                    if total_h > 0.0 && viewport_h > 0.0 {
+                        let vt = (scroll_off / total_h).clamp(0.0, 1.0);
+                        let vb = ((scroll_off + viewport_h) / total_h).clamp(0.0, 1.0);
+                        let wy0 = (by0 + vt * ah).min(r.max.y - 4.0);
+                        let wy1 = (by0 + vb * ah).clamp(wy0 + 4.0, r.max.y);
+                        painter.rect(
+                            egui::Rect::from_min_max(egui::pos2(r.min.x + 0.5, wy0), egui::pos2(r.max.x - 0.5, wy1)),
+                            Rounding::same(2.0),
+                            Color32::from_rgba_unmultiplied(200, 225, 255, 16),
+                            Stroke::new(1.0, Color32::from_rgba_unmultiplied(200, 225, 255, 120)));
                     }
-                    if resp.dragged()||resp.clicked() {
-                        if let Some(pos)=resp.interact_pointer_pos() {
-                            let frac=((pos.y-by0)/ah).clamp(0.0,1.0);
-                            let tr=(frac*n_filt as f32) as usize;
-                            let tr=tr.min(n_filt.saturating_sub(1));
-                            let mut toff=tr as f32*row_h;
-                            if total_h>viewport_h { toff=toff.min(total_h-viewport_h); } else { toff=0.0; }
-                            jump_to_offset=Some(toff);
+                    if resp.dragged() || resp.clicked() {
+                        if let Some(pos) = resp.interact_pointer_pos() {
+                            let frac = ((pos.y - by0) / ah).clamp(0.0, 1.0);
+                            let tr = ((frac * n_filt as f32) as usize).min(n_filt.saturating_sub(1));
+                            let mut toff = tr as f32 * row_h;
+                            if total_h > viewport_h { toff = toff.min(total_h - viewport_h); } else { toff = 0.0; }
+                            jump_to_offset = Some(toff);
                         }
                     }
                 });
-            if let Some(off)=jump_to_offset { self.scroll_to_offset=Some(off); }
+            if let Some(off) = jump_to_offset { self.scroll_to_offset = Some(off); }
         }
 
-        // Navigation panel
+        // ── Navigation panel ─────────────────────────────────────────────────
         if self.nav_open && !self.all_lines.is_empty() {
             let mut jump: Option<usize> = None;
             let mut kw_changed = false;
             let mut new_kw = self.nav_custom_kw_buf.clone();
 
-            let visible_data: Vec<(NavKind,usize,usize,String)> = self.nav_entries.iter()
+            let visible_data: Vec<(NavKind, usize, usize, String)> = self.nav_entries.iter()
                 .filter(|e| match e.kind {
                     NavKind::Error     => self.nav_show_error,
                     NavKind::Warning   => self.nav_show_warning,
@@ -1649,38 +1200,37 @@ impl App for LogViewerApp {
                     NavKind::Custom    => self.nav_show_custom,
                     NavKind::Bookmark  => self.nav_show_bookmark,
                 })
-                .map(|e| (e.kind,e.row_idx,e.line_num,e.label.clone()))
+                .map(|e| (e.kind, e.row_idx, e.line_num, e.label.clone()))
                 .collect();
 
             egui::SidePanel::right("nav_panel")
                 .default_width(220.0).width_range(160.0..=320.0).resizable(true)
-                .frame(egui::Frame::none().fill(Color32::from_rgb(15,19,28)).stroke(Stroke::new(1.0,COL_BORDER)))
+                .frame(egui::Frame::none()
+                    .fill(Color32::from_rgb(13, 16, 24))
+                    .stroke(Stroke::new(1.0, COL_BORDER)))
                 .show(ctx, |ui| {
-                    ui.spacing_mut().item_spacing = Vec2::new(6.0,4.0);
+                    ui.spacing_mut().item_spacing = Vec2::new(6.0, 4.0);
 
-                    egui::Frame::none().fill(Color32::from_rgb(18,23,33))
-                        .inner_margin(egui::Margin::symmetric(10.0,8.0)).show(ui, |ui| {
+                    egui::Frame::none().fill(Color32::from_rgb(16, 20, 30))
+                        .inner_margin(egui::Margin::symmetric(10.0, 8.0)).show(ui, |ui| {
                             ui.horizontal(|ui| {
-                                ui.label(RichText::new("NAVIGATION").font(FontId::monospace(10.0)).color(COL_FAINT).strong());
+                                ui.label(RichText::new("NAVIGATION").font(FontId::monospace(9.5)).color(COL_FAINT).strong());
                                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                                     ui.label(RichText::new(format!("{}", visible_data.len())).font(FontId::monospace(9.5)).color(COL_MUTED));
                                 });
                             });
                         });
-
                     ui.add(egui::Separator::default().horizontal().spacing(0.0));
 
-                    egui::Frame::none().fill(Color32::from_rgb(14,18,26))
-                        .inner_margin(egui::Margin::symmetric(10.0,8.0)).show(ui, |ui| {
+                    egui::Frame::none().fill(Color32::from_rgb(12, 15, 22))
+                        .inner_margin(egui::Margin::symmetric(10.0, 8.0)).show(ui, |ui| {
                             ui.label(RichText::new("SHOW").font(FontId::monospace(9.0)).color(COL_FAINT));
                             ui.add_space(4.0);
-                            egui::Grid::new("nav_flt").num_columns(2).spacing([8.0,4.0]).show(ui, |ui| {
-                                macro_rules! cb {
-                                    ($field:expr, $label:expr, $kind:expr) => {{
-                                        let c=$kind.color();
-                                        ui.checkbox(&mut $field, RichText::new($label).color(c).font(FontId::monospace(10.5)));
-                                    }};
-                                }
+                            egui::Grid::new("nav_flt").num_columns(2).spacing([8.0, 4.0]).show(ui, |ui| {
+                                macro_rules! cb { ($field:expr, $label:expr, $kind:expr) => {{
+                                    let c = $kind.color();
+                                    ui.checkbox(&mut $field, RichText::new($label).color(c).font(FontId::monospace(10.5)));
+                                }}; }
                                 cb!(self.nav_show_error,     "ERR",         NavKind::Error);
                                 cb!(self.nav_show_warning,   "WRN",         NavKind::Warning);
                                 ui.end_row();
@@ -1703,7 +1253,6 @@ impl App for LogViewerApp {
                                 if kr.lost_focus() && new_kw != self.nav_custom_kw { kw_changed = true; }
                             });
                         });
-
                     ui.add(egui::Separator::default().horizontal().spacing(0.0));
 
                     if visible_data.is_empty() {
@@ -1716,20 +1265,19 @@ impl App for LogViewerApp {
                         });
                     } else {
                         ScrollArea::vertical().id_source("nav_scroll").auto_shrink(false).show(ui, |ui| {
-                            ui.spacing_mut().item_spacing = Vec2::new(0.0,0.0);
+                            ui.spacing_mut().item_spacing = Vec2::new(0.0, 0.0);
                             for (kind, row_idx, line_num, label) in &visible_data {
                                 let is_sel = self.selected == Some(*row_idx);
-                                let entry_bg = if is_sel { Color32::from_rgba_unmultiplied(88,166,255,28) } else { Color32::TRANSPARENT };
+                                let entry_bg = if is_sel { Color32::from_rgba_unmultiplied(88, 166, 255, 24) } else { Color32::TRANSPARENT };
                                 let c = kind.color();
-
                                 let item_resp = egui::Frame::none()
                                     .fill(entry_bg)
-                                    .inner_margin(egui::Margin{left:12.0,right:8.0,top:6.0,bottom:6.0})
+                                    .inner_margin(egui::Margin { left: 12.0, right: 8.0, top: 6.0, bottom: 6.0 })
                                     .show(ui, |ui| {
                                         ui.horizontal(|ui| {
                                             ui.spacing_mut().item_spacing.x = 6.0;
-                                            let bar = egui::Rect::from_min_size(ui.cursor().min, Vec2::new(3.0,34.0));
-                                            ui.painter().rect_filled(bar,Rounding::ZERO,Color32::from_rgba_unmultiplied(c.r(),c.g(),c.b(),200));
+                                            let bar = egui::Rect::from_min_size(ui.cursor().min, Vec2::new(3.0, 34.0));
+                                            ui.painter().rect_filled(bar, Rounding::ZERO, Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), 190));
                                             ui.add_space(5.0);
                                             ui.vertical(|ui| {
                                                 ui.spacing_mut().item_spacing.y = 2.0;
@@ -1742,10 +1290,9 @@ impl App for LogViewerApp {
                                             });
                                         });
                                     }).response;
-
-                                let interact = ui.interact(item_resp.rect, egui::Id::new(("nav_e",*row_idx)), Sense::click());
+                                let interact = ui.interact(item_resp.rect, egui::Id::new(("nav_e", *row_idx)), Sense::click());
                                 if interact.hovered() && !is_sel {
-                                    ui.painter().rect_filled(item_resp.rect, Rounding::ZERO, Color32::from_rgba_unmultiplied(255,255,255,7));
+                                    ui.painter().rect_filled(item_resp.rect, Rounding::ZERO, Color32::from_rgba_unmultiplied(255, 255, 255, 6));
                                 }
                                 if interact.clicked() { jump = Some(*row_idx); }
                                 ui.add(egui::Separator::default().horizontal().spacing(0.0));
@@ -1758,29 +1305,30 @@ impl App for LogViewerApp {
             if kw_changed { self.nav_custom_kw = new_kw; self.recompute_nav(); }
             if let Some(row) = jump {
                 self.scroll_to_offset = Some(row as f32 * self.row_height);
-                self.selected = Some(row);
-                self.detail_open = true;
+                self.selected = Some(row); self.detail_open = true;
             }
         }
 
-        // Main log area
+        // ── Main log area ─────────────────────────────────────────────────────
         egui::CentralPanel::default()
             .frame(egui::Frame::none().fill(BG_BASE))
             .show(ctx, |ui| {
                 if self.all_lines.is_empty() {
                     ui.centered_and_justified(|ui| {
                         ui.vertical_centered(|ui| {
-                            let top_margin = (ui.available_height()-160.0).max(0.0)/2.0;
+                            let top_margin = (ui.available_height() - 170.0).max(0.0) / 2.0;
                             ui.add_space(top_margin);
-                            ui.label(RichText::new("📄 Drop a log file here").size(24.0).color(COL_TEXT));
-                            ui.add_space(12.0);
-                            ui.label(RichText::new("Better readability for trace analysis · Test output visualization · Log exploration made easy")
+                            ui.label(RichText::new("📄").size(48.0));
+                            ui.add_space(10.0);
+                            ui.label(RichText::new("Drop a log file here").size(22.0).color(COL_TEXT));
+                            ui.add_space(8.0);
+                            ui.label(RichText::new("Better readability · Test output · Log exploration")
                                 .size(13.0).color(COL_MUTED));
                             ui.add_space(28.0);
-                            if ui.add(accent_button_ui("  📂 Open File  ")).clicked() { self.open_file_dialog(); }
-                            ui.add_space(16.0);
-                            ui.label(RichText::new("Ctrl+O  open  ·  Ctrl+F  find  ·  Ctrl+H  replace  ·  Ctrl+N  nav  ·  Esc  clear")
-                                .size(12.0).color(COL_FAINT));
+                            if ui.add(accent_button_ui("  📂  Open File  ")).clicked() { self.open_file_dialog(); }
+                            ui.add_space(20.0);
+                            ui.label(RichText::new("Ctrl+O  open   ·   Ctrl+F  find   ·   Ctrl+N  nav   ·   Esc  clear")
+                                .size(11.5).color(COL_FAINT));
                         });
                     });
                     return;
@@ -1788,7 +1336,7 @@ impl App for LogViewerApp {
 
                 if self.filtered.is_empty() {
                     ui.centered_and_justified(|ui| {
-                        ui.label(RichText::new("No lines match your filters").size(16.0).color(COL_FAINT));
+                        ui.label(RichText::new("No lines match the current filters").size(15.0).color(COL_FAINT));
                     });
                     return;
                 }
@@ -1796,129 +1344,137 @@ impl App for LogViewerApp {
                 // Column headers
                 {
                     let hdr_h = 20.0;
-                    let (hdr_rect,_) = ui.allocate_exact_size(Vec2::new(ui.available_width(),hdr_h),Sense::hover());
+                    let (hdr_rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), hdr_h), Sense::hover());
                     let p = ui.painter(); let y = hdr_rect.center().y; let x0 = hdr_rect.min.x;
-                    let fid = FontId::monospace(10.0); let col = Color32::from_rgb(140,150,170);
-                    p.text(egui::pos2(x0+COL_LN-6.0,y),Align2::RIGHT_CENTER,"#",fid.clone(),col);
-                    p.text(egui::pos2(x0+COL_LN,y),Align2::LEFT_CENTER,"TIME",fid.clone(),col);
-                    p.text(egui::pos2(x0+COL_LN+COL_TS,y),Align2::LEFT_CENTER,"Δ",fid.clone(),col);
-                    p.text(egui::pos2(x0+COL_LN+COL_TS+COL_DT,y),Align2::LEFT_CENTER,"LVL",fid.clone(),col);
-                    p.text(egui::pos2(x0+COL_LN+COL_TS+COL_DT+COL_LV,y),Align2::LEFT_CENTER,"MODULE",fid.clone(),col);
-                    p.text(egui::pos2(x0+COL_LN+COL_TS+COL_DT+COL_LV+COL_MOD,y),Align2::LEFT_CENTER,"MESSAGE",fid.clone(),col);
+                    let fid = FontId::monospace(9.5);
+                    let col = Color32::from_rgb(110, 118, 134);
+                    p.text(egui::pos2(x0 + COL_LN - 8.0, y), Align2::RIGHT_CENTER, "#",       fid.clone(), col);
+                    p.text(egui::pos2(x0 + COL_LN,       y), Align2::LEFT_CENTER,  "TIME",    fid.clone(), col);
+                    p.text(egui::pos2(x0 + COL_LN + COL_TS,           y), Align2::LEFT_CENTER, "Δ",      fid.clone(), col);
+                    p.text(egui::pos2(x0 + COL_LN + COL_TS + COL_DT,  y), Align2::LEFT_CENTER, "LVL",   fid.clone(), col);
+                    p.text(egui::pos2(x0 + COL_LN + COL_TS + COL_DT + COL_LV,        y), Align2::LEFT_CENTER, "MODULE",  fid.clone(), col);
+                    p.text(egui::pos2(x0 + COL_LN + COL_TS + COL_DT + COL_LV + COL_MOD, y), Align2::LEFT_CENTER, "MESSAGE", fid.clone(), col);
                 }
                 ui.add(egui::Separator::default().horizontal().spacing(1.0));
 
-                let row_h=self.row_height; let font_sz=self.font_size;
-                let n=self.filtered.len(); let visible_height=ui.available_height();
+                let row_h = self.row_height; let font_sz = self.font_size;
+                let n = self.filtered.len(); let visible_height = ui.available_height();
 
                 let mut sa = ScrollArea::vertical().id_source("log_scroll").auto_shrink(false)
                     .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden);
-                if let Some(off)=self.scroll_to_offset.take() { sa=sa.scroll_offset(Vec2::new(0.0,off)); }
+                if let Some(off) = self.scroll_to_offset.take() { sa = sa.scroll_offset(Vec2::new(0.0, off)); }
 
                 let out = sa.show_rows(ui, row_h, n, |ui, row_range| {
                     ui.spacing_mut().item_spacing = Vec2::ZERO;
 
                     for row_idx in row_range {
-                        let line_idx = match self.filtered.get(row_idx) { Some(&i)=>i, None=>continue };
-                        let line     = match self.all_lines.get(line_idx) { Some(l)=>l, None=>continue };
+                        let line_idx = match self.filtered.get(row_idx) { Some(&i) => i, None => continue };
+                        let line     = match self.all_lines.get(line_idx) { Some(l) => l, None => continue };
+
                         let is_sel           = self.selected == Some(row_idx);
-                        
-                        let is_find_match = self.search.matches.iter().any(|m| m.row_idx == row_idx);
-                        let is_current_find = is_find_match && 
+                        let is_find_match    = self.search.matches.iter().any(|m| m.row_idx == row_idx);
+                        let is_current_find  = is_find_match &&
                             self.search.matches.get(self.search.current_match_idx).map(|m| m.row_idx) == Some(row_idx);
-                        
                         let is_bookmarked    = self.is_bookmarked(row_idx);
                         let nav_kind: Option<NavKind> = self.nav_entries.iter()
-                            .find(|e| e.row_idx==row_idx && e.kind!=NavKind::Bookmark)
+                            .find(|e| e.row_idx == row_idx && e.kind != NavKind::Bookmark)
                             .map(|e| e.kind);
 
-                        let (row_rect,resp) = ui.allocate_exact_size(Vec2::new(ui.available_width(),row_h),Sense::click());
+                        let (row_rect, resp) = ui.allocate_exact_size(Vec2::new(ui.available_width(), row_h), Sense::click());
                         if !ui.is_rect_visible(row_rect) { continue; }
 
                         let bg = if is_sel { BG_ROW_SEL }
-                            else if is_current_find { Color32::from_rgba_unmultiplied(255,180,40,55) }
-                            else if is_find_match   { Color32::from_rgba_unmultiplied(200,150,30,28) }
+                            else if is_current_find { Color32::from_rgba_unmultiplied(255, 175, 35, 52) }
+                            else if is_find_match   { Color32::from_rgba_unmultiplied(195, 145, 28, 26) }
                             else if resp.hovered()  { BG_ROW_HOVER }
                             else if let Some(c) = line.level.row_bg() { c }
                             else { Color32::TRANSPARENT };
-                        if bg != Color32::TRANSPARENT { ui.painter().rect_filled(row_rect,Rounding::ZERO,bg); }
+                        if bg != Color32::TRANSPARENT {
+                            ui.painter().rect_filled(row_rect, Rounding::ZERO, bg);
+                        }
 
                         if is_bookmarked {
                             ui.painter().rect_filled(
-                                egui::Rect::from_min_size(row_rect.min, Vec2::new(3.0,row_h)),
-                                Rounding::ZERO, Color32::from_rgb(255,140,200));
+                                egui::Rect::from_min_size(row_rect.min, Vec2::new(3.0, row_h)),
+                                Rounding::ZERO, Color32::from_rgb(255, 140, 200));
                         }
-
-                        if matches!(line.level, Level::Error|Level::Warning) {
+                        if matches!(line.level, Level::Error | Level::Warning) {
                             let x_off = if is_bookmarked { 3.0 } else { 0.0 };
                             ui.painter().rect_filled(
-                                egui::Rect::from_min_size(egui::pos2(row_rect.min.x+x_off, row_rect.min.y), Vec2::new(2.5,row_h)),
+                                egui::Rect::from_min_size(egui::pos2(row_rect.min.x + x_off, row_rect.min.y), Vec2::new(2.5, row_h)),
                                 Rounding::ZERO, line.level.color());
                         }
-
                         if let Some(kind) = nav_kind {
                             let c = kind.color();
                             ui.painter().rect_filled(
-                                egui::Rect::from_min_size(egui::pos2(row_rect.max.x-3.0,row_rect.min.y), Vec2::new(3.0,row_h)),
-                                Rounding::ZERO, Color32::from_rgba_unmultiplied(c.r(),c.g(),c.b(),140));
+                                egui::Rect::from_min_size(egui::pos2(row_rect.max.x - 3.0, row_rect.min.y), Vec2::new(3.0, row_h)),
+                                Rounding::ZERO, Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), 130));
                         }
 
-                        let p=ui.painter(); let y=row_rect.center().y;
-                        let fid=FontId::monospace(font_sz); let fsm=FontId::monospace((font_sz-1.0).max(8.0)); let fxs=FontId::monospace((font_sz-2.0).max(7.5));
+                        let p = ui.painter(); let y = row_rect.center().y;
+                        let fid = FontId::monospace(font_sz);
+                        let fsm = FontId::monospace((font_sz - 1.0).max(8.0));
+                        let fxs = FontId::monospace((font_sz - 2.0).max(7.5));
                         let mut x = row_rect.min.x + if is_bookmarked { 6.0 } else { 4.0 };
 
-                        p.text(egui::pos2(x+COL_LN-10.0,y),Align2::RIGHT_CENTER,line.num.to_string(),fxs.clone(),COL_FAINT);
-                        x+=COL_LN;
-                        let ts=if line.timestamp.len()>12{&line.timestamp[..12]}else{&line.timestamp};
-                        p.text(egui::pos2(x,y),Align2::LEFT_CENTER,ts,fsm.clone(),Color32::from_rgb(160,210,255));
-                        x+=COL_TS;
-                        if let Some(dms)=line.delta_ms { if dms>0 {
-                            let dc=if dms>=1000{Color32::from_rgb(255,200,80)}else if dms>=100{Color32::from_rgb(180,180,200)}else{Color32::from_rgb(120,130,150)};
-                            p.text(egui::pos2(x,y),Align2::LEFT_CENTER,format_delta(dms),fxs.clone(),dc);
+                        p.text(egui::pos2(x + COL_LN - 10.0, y), Align2::RIGHT_CENTER, line.num.to_string(), fxs.clone(), COL_FAINT);
+                        x += COL_LN;
+                        let ts = if line.timestamp.len() > 12 { &line.timestamp[..12] } else { &line.timestamp };
+                        p.text(egui::pos2(x, y), Align2::LEFT_CENTER, ts, fsm.clone(), Color32::from_rgb(150, 205, 255));
+                        x += COL_TS;
+                        if let Some(dms) = line.delta_ms { if dms > 0 {
+                            let dc = if dms >= 1000 { Color32::from_rgb(255, 200, 80) }
+                                else if dms >= 100 { Color32::from_rgb(175, 175, 195) }
+                                else { Color32::from_rgb(110, 118, 138) };
+                            p.text(egui::pos2(x, y), Align2::LEFT_CENTER, format_delta(dms), fxs.clone(), dc);
                         }}
-                        x+=COL_DT;
-                        p.text(egui::pos2(x,y),Align2::LEFT_CENTER,line.level.label(),fsm.clone(),line.level.color());
-                        x+=COL_LV;
-                        let md=if line.module.len()>22{&line.module[..22]}else{&line.module};
-                        p.text(egui::pos2(x,y),Align2::LEFT_CENTER,md,fsm.clone(),Color32::from_rgb(180,185,200));
-                        x+=COL_MOD;
+                        x += COL_DT;
+                        p.text(egui::pos2(x, y), Align2::LEFT_CENTER, line.level.label(), fsm.clone(), line.level.color());
+                        x += COL_LV;
+                        let md = if line.module.len() > 22 { &line.module[..22] } else { &line.module };
+                        p.text(egui::pos2(x, y), Align2::LEFT_CENTER, md, fsm.clone(), Color32::from_rgb(170, 178, 195));
+                        x += COL_MOD;
 
-                        let msg=&line.message;
-                        let msg_col=match line.level{Level::Error=>Color32::from_rgb(255,180,170),Level::Warning=>Color32::from_rgb(255,220,150),_=>Color32::from_rgb(210,215,225)};
-                        let available_width=row_rect.max.x-x-8.0;
-                        let max_chars=(available_width/(font_sz*0.6)) as usize;
+                        let msg = &line.message;
+                        let msg_col = match line.level {
+                            Level::Error   => Color32::from_rgb(255, 175, 165),
+                            Level::Warning => Color32::from_rgb(255, 218, 148),
+                            _              => Color32::from_rgb(205, 210, 222),
+                        };
+                        let available_width = row_rect.max.x - x - 8.0;
+                        let max_chars = (available_width / (font_sz * 0.6)) as usize;
                         let msg_disp = if msg.len() > max_chars.max(40) {
                             format!("{}…", &msg[..max_chars.max(40).saturating_sub(1)])
-                        } else {
-                            msg.clone()
-                        };
-                        p.text(egui::pos2(x,y),Align2::LEFT_CENTER,msg_disp,fid.clone(),msg_col);
+                        } else { msg.clone() };
+                        p.text(egui::pos2(x, y), Align2::LEFT_CENTER, msg_disp, fid.clone(), msg_col);
 
                         if resp.clicked() {
-                            if is_sel { self.detail_open=!self.detail_open; }
-                            else { self.selected=Some(row_idx); self.detail_open=true; }
+                            if is_sel { self.detail_open = !self.detail_open; }
+                            else { self.selected = Some(row_idx); self.detail_open = true; }
                         }
                         if resp.double_clicked() { self.toggle_bookmark(row_idx); }
                     }
                 });
 
-                self.scroll_area_height=visible_height;
-                self.current_scroll_offset=out.state.offset.y;
+                self.scroll_area_height = visible_height;
+                self.current_scroll_offset = out.state.offset.y;
             });
     }
 }
 
-// ─── Find Dialog Implementation ──────────────────────────────────────────────
+// ─── Find dialog ─────────────────────────────────────────────────────────────
 
 impl LogViewerApp {
     fn render_find_dialog(&mut self, ctx: &egui::Context) {
         if !self.find_dialog_open { return; }
-        
+
         let screen = ctx.screen_rect();
-        let dialog_w = 560.0;
-        let dialog_h = 440.0;
-        let pos = egui::pos2((screen.width() - dialog_w) / 2.0, 80.0);
-        
+        let dialog_w = 500.0;
+        let dialog_h = 330.0;
+        let pos = egui::pos2((screen.width() - dialog_w) / 2.0, 90.0);
+
+        let mut close_req = false;
+
         Window::new("find_dialog")
             .id(egui::Id::new("find_dlg"))
             .fixed_pos(pos)
@@ -1927,748 +1483,347 @@ impl LogViewerApp {
             .resizable(false)
             .title_bar(false)
             .frame(egui::Frame::none()
-                .fill(DIALOG_BG)
-                .stroke(Stroke::new(1.0, DIALOG_BORDER))
+                .fill(Color32::from_rgb(16, 20, 28))
+                .stroke(Stroke::new(1.0, COL_BORDER_HL))
                 .rounding(Rounding::same(12.0)))
             .show(ctx, |ui| {
                 ui.spacing_mut().item_spacing = Vec2::ZERO;
-                
-                self.render_dialog_header(ui);
-                self.render_dialog_tabs(ui);
-                
-                egui::Frame::none()
-                    .fill(DIALOG_BG)
-                    .inner_margin(egui::Margin::symmetric(20.0, 16.0))
-                    .show(ui, |ui| {
-                        match self.find_dialog_tab {
-                            FindDialogTab::Find => self.render_find_content(ui),
-                            FindDialogTab::Replace => self.render_replace_content(ui),
-                            FindDialogTab::FindInFiles => self.render_find_in_files_content(ui),
-                            FindDialogTab::Mark => self.render_mark_content(ui),
-                        }
-                    });
-            });
-    }
-    
-    fn render_dialog_header(&mut self, ui: &mut egui::Ui) {
-        let header_height = 48.0;
-        let (rect, _) = ui.allocate_exact_size(
-            Vec2::new(ui.available_width(), header_height),
-            Sense::hover()
-        );
-        
-        let painter = ui.painter();
-        
-        painter.rect_filled(
-            egui::Rect::from_min_size(rect.min, Vec2::new(rect.width(), header_height)),
-            Rounding { nw: 12.0, ne: 12.0, sw: 0.0, se: 0.0 },
-            HEADER_BG
-        );
-        
-        let title_pos = egui::pos2(rect.min.x + 20.0, rect.center().y);
-        painter.text(
-            title_pos,
-            Align2::LEFT_CENTER,
-            "🔍",
-            FontId::proportional(18.0),
-            ACCENT
-        );
-        painter.text(
-            egui::pos2(title_pos.x + 28.0, title_pos.y),
-            Align2::LEFT_CENTER,
-            "Find & Replace",
-            FontId::proportional(15.0),
-            TEXT_PRIMARY
-        );
-        
-        let close_rect = egui::Rect::from_center_size(
-            egui::pos2(rect.max.x - 28.0, rect.center().y),
-            Vec2::splat(28.0)
-        );
-        
-        let close_response = ui.interact(close_rect, egui::Id::new("cls_btn"), Sense::click());
-        
-        let close_color = if close_response.hovered() {
-            painter.rect_filled(close_rect, Rounding::same(6.0), Color32::from_rgb(60, 30, 30));
-            Color32::from_rgb(255, 120, 120)
-        } else {
-            TEXT_SECONDARY
-        };
-        
-        painter.text(
-            close_rect.center(),
-            Align2::CENTER_CENTER,
-            "✕",
-            FontId::proportional(14.0),
-            close_color
-        );
-        
-        if close_response.clicked() {
-            self.close_find_dialog();
-        }
-        
-        painter.line_segment(
-            [egui::pos2(rect.min.x, rect.max.y), egui::pos2(rect.max.x, rect.max.y)],
-            Stroke::new(1.0, DIALOG_BORDER)
-        );
-    }
-    
-    fn render_dialog_tabs(&mut self, ui: &mut egui::Ui) {
-        let tab_height = 40.0;
-        let (rect, _) = ui.allocate_exact_size(
-            Vec2::new(ui.available_width(), tab_height),
-            Sense::hover()
-        );
-        
-        let painter = ui.painter();
-        painter.rect_filled(rect, Rounding::ZERO, Color32::from_rgb(18, 22, 28));
-        
-        let tabs = [
-            (FindDialogTab::Find, "Find", "🔎"),
-            (FindDialogTab::Replace, "Replace", "🔄"),
-            (FindDialogTab::FindInFiles, "Find in Files", "📁"),
-            (FindDialogTab::Mark, "Mark", "🔖"),
-        ];
-        
-        let tab_width = rect.width() / tabs.len() as f32;
-        
-        for (i, (tab, label, icon)) in tabs.iter().enumerate() {
-            let tab_rect = egui::Rect::from_min_size(
-                egui::pos2(rect.min.x + i as f32 * tab_width, rect.min.y),
-                Vec2::new(tab_width, tab_height)
-            );
-            
-            let is_active = self.find_dialog_tab == *tab;
-            let response = ui.interact(tab_rect, egui::Id::new(("tab", i)), Sense::click());
-            
-            let bg = if is_active {
-                TAB_ACTIVE_BG
-            } else if response.hovered() {
-                TAB_HOVER_BG
-            } else {
-                Color32::TRANSPARENT
-            };
-            
-            if bg != Color32::TRANSPARENT {
-                painter.rect_filled(tab_rect, Rounding::ZERO, bg);
-            }
-            
-            if is_active {
-                painter.rect_filled(
-                    egui::Rect::from_min_size(
-                        egui::pos2(tab_rect.min.x, tab_rect.max.y - 2.0),
-                        Vec2::new(tab_width, 2.0)
-                    ),
-                    Rounding::ZERO,
-                    ACCENT
-                );
-            }
-            
-            let text_color = if is_active { TEXT_PRIMARY } else { TEXT_SECONDARY };
-            let center = tab_rect.center();
-            
-            painter.text(
-                egui::pos2(center.x - 24.0, center.y),
-                Align2::CENTER_CENTER,
-                *icon,
-                FontId::proportional(13.0),
-                if is_active { ACCENT } else { TEXT_MUTED }
-            );
-            
-            painter.text(
-                egui::pos2(center.x + 8.0, center.y),
-                Align2::LEFT_CENTER,
-                *label,
-                FontId::proportional(12.0),
-                text_color
-            );
-            
-            if response.clicked() {
-                self.find_dialog_tab = *tab;
-            }
-        }
-        
-        painter.line_segment(
-            [egui::pos2(rect.min.x, rect.max.y), egui::pos2(rect.max.x, rect.max.y)],
-            Stroke::new(1.0, DIALOG_BORDER)
-        );
-    }
-    
-    fn render_find_content(&mut self, ui: &mut egui::Ui) {
-        let mut should_search = false;
-        let mut options_changed = false;
-        
-        ui.spacing_mut().item_spacing.y = 12.0;
-        
-        ui.horizontal(|ui| {
-            ui.add_space(4.0);
-            ui.label(RichText::new("🔍").size(14.0).color(TEXT_MUTED));
-            ui.add_space(8.0);
-            
-            let input = styled_text_input(ui, "find_in", &mut self.search.find_what, "Search for...", 380.0);
-            if input.changed() {
-                options_changed = true;
-            }
-            if input.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter)) {
-                should_search = true;
-            }
-        });
-        
-        ui.add_space(8.0);
-        
-        ui.horizontal(|ui| {
-            ui.vertical(|ui| {
-                ui.set_width(280.0);
-                ui.spacing_mut().item_spacing.y = 6.0;
-                
-                options_changed |= styled_checkbox(ui, &mut self.search.match_case, "Match case", "Aa");
-                options_changed |= styled_checkbox(ui, &mut self.search.whole_word, "Whole word", "「」");
-                styled_checkbox(ui, &mut self.search.wrap_around, "Wrap around", "↻");
-                styled_checkbox(ui, &mut self.search.backward, "Search backward", "←");
-                
-                ui.add_space(12.0);
-                
-                ui.label(RichText::new("SEARCH MODE").font(FontId::monospace(9.0)).color(TEXT_MUTED));
-                ui.add_space(4.0);
-                
-                egui::Frame::none()
-                    .fill(Color32::from_rgb(18, 22, 28))
-                    .rounding(Rounding::same(8.0))
-                    .inner_margin(egui::Margin::symmetric(12.0, 8.0))
-                    .show(ui, |ui| {
-                        ui.spacing_mut().item_spacing.y = 4.0;
-                        
-                        if styled_radio(ui, self.search.mode == SearchMode::Normal, "Normal", "Literal text matching") {
-                            self.search.mode = SearchMode::Normal;
-                            options_changed = true;
-                        }
-                        if styled_radio(ui, self.search.mode == SearchMode::Extended, "Extended", "\\n \\r \\t \\x00") {
-                            self.search.mode = SearchMode::Extended;
-                            options_changed = true;
-                        }
-                        if styled_radio(ui, self.search.mode == SearchMode::Regex, "Regex", "Regular expressions") {
-                            self.search.mode = SearchMode::Regex;
-                            options_changed = true;
-                        }
-                    });
-            });
-            
-            ui.add_space(20.0);
-            
-            ui.vertical(|ui| {
-                ui.set_width(180.0);
-                ui.spacing_mut().item_spacing.y = 8.0;
-                
-                let has_matches = !self.search.matches.is_empty();
-                
-                if primary_button(ui, "▶  Find Next", true) || should_search {
-                    self.do_find_next();
-                }
-                
-                if secondary_button(ui, "◀  Find Previous", has_matches) {
-                    self.do_find_prev();
-                }
-                
-                ui.add_space(4.0);
-                
-                if secondary_button(ui, "⊕  Count All", true) {
-                    self.do_count();
-                }
-                
-                if accent_button(ui, "☰  Find All", true) {
-                    self.do_find_all_with_results();
-                }
-                
-                ui.add_space(8.0);
-                
-                if secondary_button(ui, "✕  Close", true) {
-                    self.close_find_dialog();
-                }
-            });
-        });
-        
-        if !self.search.matches.is_empty() {
-            ui.add_space(8.0);
-            egui::Frame::none()
-                .fill(Color32::from_rgba_unmultiplied(88, 166, 255, 15))
-                .rounding(Rounding::same(6.0))
-                .inner_margin(egui::Margin::symmetric(12.0, 8.0))
-                .show(ui, |ui| {
-                    ui.horizontal(|ui| {
-                        ui.label(RichText::new("✓").color(Color32::from_rgb(63, 185, 80)));
-                        ui.add_space(8.0);
-                        ui.label(
-                            RichText::new(format!(
-                                "Match {} of {}",
-                                self.search.current_match_idx + 1,
-                                self.search.matches.len()
-                            ))
-                            .font(FontId::monospace(12.0))
-                            .color(ACCENT)
-                        );
-                    });
-                });
-        }
-        
-        if options_changed {
-            self.search.find_all(&self.filtered, &self.all_lines);
-        }
-    }
-    
-    fn render_replace_content(&mut self, ui: &mut egui::Ui) {
-        let mut options_changed = false;
-        
-        ui.spacing_mut().item_spacing.y = 12.0;
-        
-        ui.horizontal(|ui| {
-            ui.add_space(4.0);
-            ui.label(RichText::new("🔍").size(14.0).color(TEXT_MUTED));
-            ui.add_space(8.0);
-            let input = styled_text_input(ui, "find_in_r", &mut self.search.find_what, "Search for...", 400.0);
-            if input.changed() { options_changed = true; }
-        });
-        
-        ui.horizontal(|ui| {
-            ui.add_space(4.0);
-            ui.label(RichText::new("↳").size(14.0).color(TEXT_MUTED));
-            ui.add_space(8.0);
-            styled_text_input(ui, "replace_in", &mut self.search.replace_with, "Replace with...", 400.0);
-        });
-        
-        ui.add_space(8.0);
-        
-        ui.horizontal(|ui| {
-            ui.vertical(|ui| {
-                ui.set_width(280.0);
-                ui.spacing_mut().item_spacing.y = 6.0;
-                
-                options_changed |= styled_checkbox(ui, &mut self.search.match_case, "Match case", "Aa");
-                options_changed |= styled_checkbox(ui, &mut self.search.whole_word, "Whole word", "「」");
-                styled_checkbox(ui, &mut self.search.wrap_around, "Wrap around", "↻");
-            });
-            
-            ui.add_space(20.0);
-            
-            ui.vertical(|ui| {
-                ui.set_width(180.0);
-                ui.spacing_mut().item_spacing.y = 8.0;
-                
-                if primary_button(ui, "▶  Find Next", true) {
-                    self.do_find_next();
-                }
-                
-                ui.add_enabled_ui(false, |ui| {
-                    secondary_button(ui, "↻  Replace", false);
-                    secondary_button(ui, "↻↻ Replace All", false);
-                });
-                
-                ui.add_space(4.0);
-                
-                egui::Frame::none()
-                    .fill(Color32::from_rgba_unmultiplied(255, 200, 50, 15))
-                    .rounding(Rounding::same(4.0))
-                    .inner_margin(egui::Margin::symmetric(8.0, 4.0))
-                    .show(ui, |ui| {
-                        ui.label(
-                            RichText::new("📄 Read-only mode")
-                                .font(FontId::proportional(10.0))
-                                .color(Color32::from_rgb(255, 200, 100))
-                        );
-                    });
-            });
-        });
-        
-        if options_changed {
-            self.search.find_all(&self.filtered, &self.all_lines);
-        }
-    }
-    
-    fn render_mark_content(&mut self, ui: &mut egui::Ui) {
-        let mut options_changed = false;
-        
-        ui.spacing_mut().item_spacing.y = 12.0;
-        
-        ui.horizontal(|ui| {
-            ui.add_space(4.0);
-            ui.label(RichText::new("🔖").size(14.0).color(TEXT_MUTED));
-            ui.add_space(8.0);
-            let input = styled_text_input(ui, "mark_in", &mut self.search.find_what, "Mark lines containing...", 400.0);
-            if input.changed() { options_changed = true; }
-        });
-        
-        ui.add_space(8.0);
-        
-        ui.horizontal(|ui| {
-            ui.vertical(|ui| {
-                ui.set_width(280.0);
-                ui.spacing_mut().item_spacing.y = 6.0;
-                
-                options_changed |= styled_checkbox(ui, &mut self.search.match_case, "Match case", "Aa");
-                options_changed |= styled_checkbox(ui, &mut self.search.whole_word, "Whole word", "「」");
-                styled_checkbox(ui, &mut self.search.bookmark_matches, "Bookmark lines", "♥");
-                styled_checkbox(ui, &mut self.search.purge_before_mark, "Clear existing marks", "🗑");
-                
-                ui.add_space(12.0);
-                
-                ui.label(RichText::new("HIGHLIGHT STYLE").font(FontId::monospace(9.0)).color(TEXT_MUTED));
-                ui.add_space(6.0);
-                
-                ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing.x = 8.0;
-                    
-                    for style in [MarkStyle::Red, MarkStyle::Orange, MarkStyle::Yellow, MarkStyle::Green, MarkStyle::Blue, MarkStyle::Purple] {
-                        let selected = self.search.mark_style == style;
-                        let color = style.color();
-                        
-                        let (rect, response) = ui.allocate_exact_size(Vec2::splat(28.0), Sense::click());
-                        
-                        let rounding = Rounding::same(6.0);
-                        let painter = ui.painter();
-                        
-                        painter.rect_filled(rect, rounding, color);
-                        
-                        if selected {
-                            painter.rect_stroke(rect.expand(2.0), rounding, Stroke::new(2.0, TEXT_PRIMARY));
-                            painter.text(rect.center(), Align2::CENTER_CENTER, "✓", FontId::proportional(14.0), Color32::BLACK);
-                        } else if response.hovered() {
-                            painter.rect_stroke(rect, rounding, Stroke::new(1.0, TEXT_SECONDARY));
-                        }
-                        
-                        if response.clicked() {
-                            self.search.mark_style = style;
-                        }
+
+                // ── Header ────────────────────────────────────────────────────
+                {
+                    let hh = 46.0;
+                    let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), hh), Sense::hover());
+                    let painter = ui.painter();
+                    painter.rect_filled(
+                        egui::Rect::from_min_size(rect.min, rect.size()),
+                        Rounding { nw: 12.0, ne: 12.0, sw: 0.0, se: 0.0 },
+                        Color32::from_rgb(20, 25, 35));
+                    painter.text(egui::pos2(rect.min.x + 18.0, rect.center().y),
+                        Align2::LEFT_CENTER, "⌕", FontId::proportional(20.0), COL_ACCENT);
+                    painter.text(egui::pos2(rect.min.x + 42.0, rect.center().y),
+                        Align2::LEFT_CENTER, "Find", FontId::proportional(14.0), COL_TEXT);
+
+                    // match counter badge
+                    if !self.search.matches.is_empty() {
+                        let badge = format!("{} / {}", self.search.current_match_idx + 1, self.search.matches.len());
+                        let badge_w = 70.0;
+                        let badge_rect = egui::Rect::from_center_size(
+                            egui::pos2(rect.max.x - 48.0, rect.center().y), Vec2::new(badge_w, 22.0));
+                        painter.rect_filled(badge_rect, Rounding::same(11.0), Color32::from_rgba_unmultiplied(88, 166, 255, 40));
+                        painter.text(badge_rect.center(), Align2::CENTER_CENTER, badge,
+                            FontId::monospace(11.0), COL_ACCENT);
                     }
-                });
-            });
-            
-            ui.add_space(20.0);
-            
-            ui.vertical(|ui| {
-                ui.set_width(180.0);
-                ui.spacing_mut().item_spacing.y = 8.0;
-                
-                if primary_button(ui, "🔖  Mark All", true) {
-                    self.do_mark_all();
+
+                    let close_rect = egui::Rect::from_center_size(
+                        egui::pos2(rect.max.x - 16.0, rect.center().y), Vec2::splat(26.0));
+                    let close_resp = ui.interact(close_rect, egui::Id::new("dlg_cls"), Sense::click());
+                    let x_col = if close_resp.hovered() {
+                        painter.rect_filled(close_rect, Rounding::same(5.0), Color32::from_rgb(55, 22, 22));
+                        Color32::from_rgb(255, 110, 110)
+                    } else { COL_MUTED };
+                    painter.text(close_rect.center(), Align2::CENTER_CENTER, "✕",
+                        FontId::proportional(12.0), x_col);
+                    if close_resp.clicked() { close_req = true; }
+
+                    painter.line_segment([egui::pos2(rect.min.x, rect.max.y), egui::pos2(rect.max.x, rect.max.y)],
+                        Stroke::new(1.0, COL_BORDER));
                 }
-                
-                if secondary_button(ui, "🗑  Clear Marks", true) {
-                    self.do_clear_marks();
-                }
-                
-                ui.add_space(4.0);
-                
-                if secondary_button(ui, "✕  Close", true) {
-                    self.close_find_dialog();
-                }
-            });
-        });
-        
-        if !self.bookmarks.is_empty() {
-            ui.add_space(12.0);
-            egui::Frame::none()
-                .fill(Color32::from_rgba_unmultiplied(255, 180, 50, 15))
-                .rounding(Rounding::same(6.0))
-                .inner_margin(egui::Margin::symmetric(12.0, 8.0))
-                .show(ui, |ui| {
-                    ui.horizontal(|ui| {
-                        ui.label(RichText::new("♥").color(self.search.mark_style.color()));
-                        ui.add_space(8.0);
-                        ui.label(
-                            RichText::new(format!("{} lines bookmarked", self.bookmarks.len()))
-                                .font(FontId::proportional(12.0))
-                                .color(TEXT_PRIMARY)
+
+                // ── Body ──────────────────────────────────────────────────────
+                egui::Frame::none()
+                    .inner_margin(egui::Margin { left: 20.0, right: 20.0, top: 18.0, bottom: 18.0 })
+                    .show(ui, |ui| {
+                        ui.spacing_mut().item_spacing.y = 0.0;
+
+                        // Search input
+                        let input_h = 36.0;
+                        let avail_w = ui.available_width();
+                        let (input_rect, _) = ui.allocate_exact_size(Vec2::new(avail_w, input_h), Sense::hover());
+                        let painter = ui.painter();
+
+                        let is_empty = self.search.find_what.is_empty();
+                        let border_col = if !is_empty { COL_ACCENT } else { COL_BORDER_HL };
+                        painter.rect(input_rect, Rounding::same(8.0),
+                            Color32::from_rgb(9, 12, 18), Stroke::new(1.0, border_col));
+
+                        let te_rect = egui::Rect::from_min_max(
+                            egui::pos2(input_rect.min.x + 12.0, input_rect.min.y + 3.0),
+                            egui::pos2(input_rect.max.x - 12.0, input_rect.max.y - 3.0),
                         );
+                        let te_resp = ui.put(te_rect,
+                            TextEdit::singleline(&mut self.search.find_what)
+                                .hint_text(RichText::new("Search for…").color(COL_FAINT))
+                                .frame(false)
+                                .font(FontId::monospace(13.0))
+                        );
+                        if te_resp.changed() {
+                            self.search.first_search = true;
+                            self.search.find_all(&self.filtered, &self.all_lines);
+                        }
+                        let do_next = te_resp.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter));
+
+                        ui.add_space(16.0);
+
+                        // Options row
+                        ui.horizontal(|ui| {
+                            ui.spacing_mut().item_spacing.x = 18.0;
+                            let mut changed = false;
+                            changed |= find_checkbox(ui, &mut self.search.match_case,  "Aa",    "Match case");
+                            changed |= find_checkbox(ui, &mut self.search.whole_word,  "\\b",   "Whole word");
+                            changed |= find_checkbox(ui, &mut self.search.wrap_around, "↻",     "Wrap around");
+                            changed |= find_checkbox(ui, &mut self.search.backward,    "←",     "Backward");
+                            if changed {
+                                self.search.first_search = true;
+                                self.search.find_all(&self.filtered, &self.all_lines);
+                            }
+                        });
+
+                        ui.add_space(14.0);
+
+                        // Mode row
+                        ui.horizontal(|ui| {
+                            ui.spacing_mut().item_spacing.x = 6.0;
+                            ui.label(RichText::new("Mode:").font(FontId::monospace(10.5)).color(COL_FAINT));
+                            ui.spacing_mut().item_spacing.x = 0.0;
+                            let modes = [
+                                (SearchMode::Normal,   "Normal"),
+                                (SearchMode::Extended, "Extended (\\n \\t)"),
+                                (SearchMode::Regex,    "Regex"),
+                            ];
+                            for (mode, label) in modes {
+                                let selected = self.search.mode == mode;
+                                let btn = ui.add(Button::new(
+                                    RichText::new(label).font(FontId::proportional(11.0))
+                                        .color(if selected { COL_ACCENT } else { COL_MUTED })
+                                )
+                                .fill(if selected { Color32::from_rgba_unmultiplied(88, 166, 255, 22) } else { Color32::TRANSPARENT })
+                                .stroke(if selected { Stroke::new(1.0, Color32::from_rgba_unmultiplied(88, 166, 255, 100)) } else { Stroke::NONE })
+                                .rounding(Rounding::same(5.0))
+                                .min_size(Vec2::new(0.0, 24.0)));
+                                if btn.clicked() {
+                                    self.search.mode = mode;
+                                    self.search.find_all(&self.filtered, &self.all_lines);
+                                }
+                                ui.add_space(4.0);
+                            }
+                        });
+
+                        ui.add_space(18.0);
+
+                        // Action buttons
+                        ui.horizontal(|ui| {
+                            ui.spacing_mut().item_spacing.x = 8.0;
+
+                            // Find Next — primary
+                            let find_next_btn = ui.add(
+                                Button::new(RichText::new("▶  Find Next").strong().color(BG_BASE).font(FontId::proportional(12.0)))
+                                    .fill(COL_ACCENT)
+                                    .stroke(Stroke::NONE)
+                                    .rounding(Rounding::same(7.0))
+                                    .min_size(Vec2::new(120.0, 32.0))
+                            );
+                            if find_next_btn.clicked() || do_next { self.do_find_next(); }
+
+                            // Find Previous
+                            let has_matches = !self.search.matches.is_empty();
+                            let find_prev_btn = ui.add_enabled(has_matches,
+                                Button::new(RichText::new("◀  Previous").color(COL_TEXT).font(FontId::proportional(12.0)))
+                                    .fill(Color32::from_rgb(28, 34, 46))
+                                    .stroke(Stroke::new(1.0, COL_BORDER_HL))
+                                    .rounding(Rounding::same(7.0))
+                                    .min_size(Vec2::new(100.0, 32.0))
+                            );
+                            if find_prev_btn.clicked() { self.do_find_prev(); }
+
+                            // Find All
+                            if ui.add(
+                                Button::new(RichText::new("☰  Find All").color(COL_ACCENT).font(FontId::proportional(12.0)))
+                                    .fill(Color32::from_rgba_unmultiplied(88, 166, 255, 18))
+                                    .stroke(Stroke::new(1.0, Color32::from_rgba_unmultiplied(88, 166, 255, 80)))
+                                    .rounding(Rounding::same(7.0))
+                                    .min_size(Vec2::new(90.0, 32.0))
+                            ).clicked() { self.do_find_all_with_results(); }
+
+                            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                                if ui.add(
+                                    Button::new(RichText::new("✕  Close").color(COL_MUTED).font(FontId::proportional(11.5)))
+                                        .fill(Color32::TRANSPARENT)
+                                        .stroke(Stroke::new(0.5, COL_BORDER))
+                                        .rounding(Rounding::same(7.0))
+                                        .min_size(Vec2::new(70.0, 32.0))
+                                ).clicked() { close_req = true; }
+                            });
+                        });
+
+                        // No results hint
+                        if !self.search.find_what.is_empty() && self.search.matches.is_empty() {
+                            ui.add_space(10.0);
+                            egui::Frame::none()
+                                .fill(Color32::from_rgba_unmultiplied(255, 100, 90, 15))
+                                .rounding(Rounding::same(6.0))
+                                .inner_margin(egui::Margin::symmetric(12.0, 7.0))
+                                .show(ui, |ui| {
+                                    ui.label(RichText::new("✗  No matches in current view")
+                                        .font(FontId::proportional(11.5))
+                                        .color(Color32::from_rgb(255, 120, 110)));
+                                });
+                        }
                     });
-                });
-        }
-        
-        if options_changed {
-            self.search.find_all(&self.filtered, &self.all_lines);
-        }
+            });
+
+        if close_req { self.find_dialog_open = false; }
     }
-    
-    fn render_find_in_files_content(&mut self, ui: &mut egui::Ui) {
-        ui.vertical_centered(|ui| {
-            ui.add_space(40.0);
-            
-            ui.label(RichText::new("📁").size(48.0).color(TEXT_MUTED));
-            
-            ui.add_space(16.0);
-            
-            ui.label(
-                RichText::new("Find in Files")
-                    .font(FontId::proportional(18.0))
-                    .color(TEXT_PRIMARY)
-            );
-            
-            ui.add_space(8.0);
-            
-            ui.label(
-                RichText::new("Search across multiple log files in a directory")
-                    .font(FontId::proportional(12.0))
-                    .color(TEXT_SECONDARY)
-            );
-            
-            ui.add_space(24.0);
-            
-            if primary_button(ui, "📂  Select Folder...", true) {
-                // TODO: Implement folder selection
-            }
-            
-            ui.add_space(16.0);
-            
-            egui::Frame::none()
-                .fill(Color32::from_rgba_unmultiplied(88, 166, 255, 10))
-                .rounding(Rounding::same(8.0))
-                .inner_margin(egui::Margin::symmetric(16.0, 12.0))
-                .show(ui, |ui| {
-                    ui.label(
-                        RichText::new("🚧 This feature is coming soon")
-                            .font(FontId::proportional(11.0))
-                            .color(TEXT_MUTED)
-                    );
-                });
-        });
-    }
-    
+
     fn render_results_panel(&mut self, ctx: &egui::Context) {
-        if !self.search.results_panel_open || self.search.matches.is_empty() {
-            return;
-        }
-        
+        if !self.search.results_panel_open || self.search.matches.is_empty() { return; }
+
         let mut jump_to: Option<usize> = None;
         let mut close_panel = false;
-        
+
         egui::TopBottomPanel::bottom("results_panel")
             .resizable(true)
             .default_height(self.search.results_panel_height)
             .height_range(100.0..=400.0)
             .frame(egui::Frame::none()
-                .fill(RESULTS_BG)
-                .stroke(Stroke::new(1.0, DIALOG_BORDER)))
+                .fill(Color32::from_rgb(10, 13, 20))
+                .stroke(Stroke::new(1.0, COL_BORDER)))
             .show(ctx, |ui| {
                 self.search.results_panel_height = ui.available_height();
-                
+
                 egui::Frame::none()
-                    .fill(RESULTS_HEADER)
-                    .inner_margin(egui::Margin::symmetric(16.0, 10.0))
+                    .fill(Color32::from_rgb(14, 18, 26))
+                    .inner_margin(egui::Margin::symmetric(16.0, 9.0))
                     .show(ui, |ui| {
                         ui.horizontal(|ui| {
-                            ui.label(
-                                RichText::new("🔍")
-                                    .size(14.0)
-                                    .color(ACCENT)
-                            );
+                            ui.label(RichText::new("⌕").size(15.0).color(COL_ACCENT));
+                            ui.add_space(6.0);
+                            ui.label(RichText::new("Search Results").font(FontId::proportional(12.5)).color(COL_TEXT).strong());
                             ui.add_space(8.0);
-                            ui.label(
-                                RichText::new("Search Results")
-                                    .font(FontId::proportional(13.0))
-                                    .color(TEXT_PRIMARY)
-                                    .strong()
-                            );
-                            ui.add_space(12.0);
-                            
                             egui::Frame::none()
-                                .fill(Color32::from_rgba_unmultiplied(88, 166, 255, 30))
+                                .fill(Color32::from_rgba_unmultiplied(88, 166, 255, 40))
                                 .rounding(Rounding::same(10.0))
                                 .inner_margin(egui::Margin::symmetric(10.0, 3.0))
                                 .show(ui, |ui| {
-                                    ui.label(
-                                        RichText::new(format!("{} matches", self.search.matches.len()))
-                                            .font(FontId::monospace(11.0))
-                                            .color(ACCENT)
-                                    );
+                                    ui.label(RichText::new(format!("{} matches", self.search.matches.len()))
+                                        .font(FontId::monospace(10.5)).color(COL_ACCENT));
                                 });
-                            
-                            ui.add_space(12.0);
-                            
-                            ui.label(
-                                RichText::new(format!("for \"{}\"", self.search.find_what))
-                                    .font(FontId::proportional(12.0))
-                                    .color(TEXT_SECONDARY)
-                            );
-                            
+                            ui.add_space(8.0);
+                            ui.label(RichText::new(format!("for \"{}\"", self.search.find_what))
+                                .font(FontId::proportional(11.5)).color(COL_MUTED));
+
                             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                if ui.add(
-                                    Button::new(RichText::new("✕").color(TEXT_SECONDARY))
-                                        .fill(Color32::TRANSPARENT)
-                                        .stroke(Stroke::NONE)
-                                        .min_size(Vec2::new(28.0, 28.0))
-                                ).on_hover_text("Close results").clicked() {
-                                    close_panel = true;
-                                }
-                                
-                                ui.add_space(8.0);
-                                
-                                if ui.add(
-                                    Button::new(RichText::new("📋 Copy All").font(FontId::proportional(11.0)).color(TEXT_SECONDARY))
-                                        .fill(BUTTON_BG)
-                                        .stroke(Stroke::new(0.5, DIALOG_BORDER))
-                                        .rounding(Rounding::same(4.0))
-                                ).on_hover_text("Copy all matches to clipboard").clicked() {
-                                    let text: String = self.search.matches.iter()
+                                ui.spacing_mut().item_spacing.x = 6.0;
+                                if ui.add(Button::new(RichText::new("✕").color(COL_MUTED))
+                                    .fill(Color32::TRANSPARENT).stroke(Stroke::NONE)
+                                    .min_size(Vec2::splat(26.0))).clicked() { close_panel = true; }
+                                if ui.add(ghost_button("📋 Copy")).on_hover_text("Copy all to clipboard").clicked() {
+                                    let text = self.search.matches.iter()
                                         .map(|m| format!("Line {}: {}", m.line_num, m.match_text))
-                                        .collect::<Vec<_>>()
-                                        .join("\n");
+                                        .collect::<Vec<_>>().join("\n");
                                     ui.output_mut(|o| o.copied_text = text);
                                 }
-                                
-                                ui.add_space(8.0);
-                                
-                                if ui.add(
-                                    Button::new(RichText::new("💾 Export").font(FontId::proportional(11.0)).color(TEXT_SECONDARY))
-                                        .fill(BUTTON_BG)
-                                        .stroke(Stroke::new(0.5, DIALOG_BORDER))
-                                        .rounding(Rounding::same(4.0))
-                                ).on_hover_text("Export matches to file").clicked() {
-                                    self.export_search_results();
-                                }
+                                if ui.add(ghost_button("💾 Export")).clicked() { self.export_search_results(); }
                             });
                         });
                     });
-                
                 ui.add(egui::Separator::default().spacing(0.0));
-                
+
+                // Column headers
                 egui::Frame::none()
-                    .fill(Color32::from_rgb(18, 22, 28))
-                    .inner_margin(egui::Margin::symmetric(16.0, 6.0))
+                    .fill(Color32::from_rgb(13, 16, 22))
+                    .inner_margin(egui::Margin::symmetric(16.0, 5.0))
                     .show(ui, |ui| {
                         ui.horizontal(|ui| {
                             ui.set_min_width(ui.available_width());
-                            
-                            ui.label(RichText::new("LINE").font(FontId::monospace(9.0)).color(TEXT_MUTED));
-                            ui.add_space(50.0);
-                            ui.label(RichText::new("LVL").font(FontId::monospace(9.0)).color(TEXT_MUTED));
-                            ui.add_space(50.0);
-                            ui.label(RichText::new("MODULE").font(FontId::monospace(9.0)).color(TEXT_MUTED));
-                            ui.add_space(80.0);
-                            ui.label(RichText::new("MATCH CONTEXT").font(FontId::monospace(9.0)).color(TEXT_MUTED));
+                            for (w, label) in [(55.0, "LINE"), (46.0, "LVL"), (80.0, "MODULE"), (0.0, "MATCH CONTEXT")] {
+                                ui.add_sized([if w > 0.0 { w } else { 200.0 }, 16.0],
+                                    egui::Label::new(RichText::new(label).font(FontId::monospace(9.0)).color(COL_FAINT)));
+                            }
                         });
                     });
-                
                 ui.add(egui::Separator::default().spacing(0.0));
-                
-                ScrollArea::vertical()
-                    .id_source("results_scroll")
-                    .auto_shrink(false)
-                    .show(ui, |ui| {
-                        ui.spacing_mut().item_spacing = Vec2::ZERO;
-                        
-                        for (idx, mat) in self.search.matches.iter().enumerate() {
-                            let is_current = idx == self.search.current_match_idx;
-                            let is_selected = self.selected == Some(mat.row_idx);
-                            
-                            let row_height = 32.0;
-                            let (rect, response) = ui.allocate_exact_size(
-                                Vec2::new(ui.available_width(), row_height),
-                                Sense::click()
-                            );
-                            
-                            if !ui.is_rect_visible(rect) {
-                                continue;
-                            }
-                            
-                            let painter = ui.painter();
-                            
-                            let bg = if is_current {
-                                Color32::from_rgba_unmultiplied(88, 166, 255, 35)
-                            } else if is_selected {
-                                RESULTS_ROW_SELECTED
-                            } else if response.hovered() {
-                                RESULTS_ROW_HOVER
-                            } else if idx % 2 == 1 {
-                                Color32::from_rgb(16, 20, 26)
-                            } else {
-                                Color32::TRANSPARENT
-                            };
-                            
-                            if bg != Color32::TRANSPARENT {
-                                painter.rect_filled(rect, Rounding::ZERO, bg);
-                            }
-                            
-                            if is_current {
-                                painter.rect_filled(
-                                    egui::Rect::from_min_size(rect.min, Vec2::new(3.0, row_height)),
-                                    Rounding::ZERO,
-                                    ACCENT
-                                );
-                            }
-                            
-                            let level_color = mat.level.color();
-                            painter.rect_filled(
-                                egui::Rect::from_min_size(
-                                    egui::pos2(rect.min.x + 4.0, rect.min.y + 4.0),
-                                    Vec2::new(2.0, row_height - 8.0)
-                                ),
-                                Rounding::same(1.0),
-                                level_color
-                            );
-                            
-                            let y = rect.center().y;
-                            let mut x = rect.min.x + 16.0;
-                            
-                            painter.text(
-                                egui::pos2(x + 40.0, y),
-                                Align2::RIGHT_CENTER,
-                                mat.line_num.to_string(),
-                                FontId::monospace(11.0),
-                                TEXT_MUTED
-                            );
-                            x += 60.0;
-                            
-                            painter.text(
-                                egui::pos2(x, y),
-                                Align2::LEFT_CENTER,
-                                mat.level.label(),
-                                FontId::monospace(10.0),
-                                level_color
-                            );
-                            x += 50.0;
-                            
-                            let module_display = if mat.module.len() > 10 {
-                                format!("{}…", &mat.module[..9])
-                            } else {
-                                mat.module.clone()
-                            };
-                            painter.text(
-                                egui::pos2(x, y),
-                                Align2::LEFT_CENTER,
-                                &module_display,
-                                FontId::monospace(10.0),
-                                Color32::from_rgb(140, 150, 170)
-                            );
-                            x += 80.0;
-                            
-                            let available_width = rect.max.x - x - 16.0;
-                            render_match_context(painter, egui::pos2(x, y), mat, available_width);
-                            
-                            if response.clicked() {
-                                self.search.current_match_idx = idx;
-                                jump_to = Some(mat.row_idx);
-                            }
-                            
-                            if response.double_clicked() {
-                                self.search.current_match_idx = idx;
-                                jump_to = Some(mat.row_idx);
-                                close_panel = true;
-                            }
+
+                ScrollArea::vertical().id_source("results_scroll").auto_shrink(false).show(ui, |ui| {
+                    ui.spacing_mut().item_spacing = Vec2::ZERO;
+
+                    for (idx, mat) in self.search.matches.iter().enumerate() {
+                        let is_current = idx == self.search.current_match_idx;
+                        let row_h = 30.0;
+                        let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), row_h), Sense::click());
+                        if !ui.is_rect_visible(rect) { continue; }
+
+                        let painter = ui.painter();
+                        let bg = if is_current { Color32::from_rgba_unmultiplied(88, 166, 255, 32) }
+                            else if response.hovered() { Color32::from_rgb(18, 22, 32) }
+                            else if idx % 2 == 1 { Color32::from_rgb(13, 16, 22) }
+                            else { Color32::TRANSPARENT };
+                        if bg != Color32::TRANSPARENT { painter.rect_filled(rect, Rounding::ZERO, bg); }
+                        if is_current {
+                            painter.rect_filled(egui::Rect::from_min_size(rect.min, Vec2::new(3.0, row_h)),
+                                Rounding::ZERO, COL_ACCENT);
                         }
-                    });
+                        let level_color = mat.level.color();
+                        painter.rect_filled(
+                            egui::Rect::from_min_size(egui::pos2(rect.min.x + 4.0, rect.min.y + 5.0), Vec2::new(2.0, row_h - 10.0)),
+                            Rounding::same(1.0), level_color);
+
+                        let y = rect.center().y;
+                        let mut x = rect.min.x + 14.0;
+                        painter.text(egui::pos2(x + 42.0, y), Align2::RIGHT_CENTER, mat.line_num.to_string(), FontId::monospace(10.5), COL_MUTED);
+                        x += 60.0;
+                        painter.text(egui::pos2(x, y), Align2::LEFT_CENTER, mat.level.label(), FontId::monospace(10.0), level_color);
+                        x += 46.0;
+                        let module_display = if mat.module.len() > 10 { format!("{}…", &mat.module[..9]) } else { mat.module.clone() };
+                        painter.text(egui::pos2(x, y), Align2::LEFT_CENTER, &module_display, FontId::monospace(10.0), Color32::from_rgb(130, 140, 160));
+                        x += 80.0;
+                        render_match_context(painter, egui::pos2(x, y), mat, rect.max.x - x - 16.0);
+
+                        if response.clicked() { self.search.current_match_idx = idx; jump_to = Some(mat.row_idx); }
+                        if response.double_clicked() { self.search.current_match_idx = idx; jump_to = Some(mat.row_idx); close_panel = true; }
+                    }
+                });
             });
-        
-        if close_panel {
-            self.search.results_panel_open = false;
-        }
-        
+
+        if close_panel { self.search.results_panel_open = false; }
         if let Some(row) = jump_to {
             self.scroll_to_offset = Some(row as f32 * self.row_height);
-            self.selected = Some(row);
-            self.detail_open = true;
+            self.selected = Some(row); self.detail_open = true;
         }
     }
 }
 
-// ─── main ────────────────────────────────────────────────────────────────────
+// ─── Tiny helpers ─────────────────────────────────────────────────────────────
+
+fn menu_item(icon: &str, label: &str, shortcut: &str) -> Button<'static> {
+    let label_text = if shortcut.is_empty() {
+        format!("{}  {}", icon, label)
+    } else {
+        format!("{}  {}  ({})", icon, label, shortcut)
+    };
+    Button::new(RichText::new(label_text).font(FontId::proportional(12.0)).color(COL_TEXT))
+        .fill(Color32::TRANSPARENT)
+        .stroke(Stroke::NONE)
+        .min_size(Vec2::new(180.0, 26.0))
+}
+
+fn painter_shortcut_key(k: &str) -> String { k.to_string() }
+
+fn find_checkbox(ui: &mut egui::Ui, val: &mut bool, label: &str, tooltip: &str) -> bool {
+    let old = *val;
+    let resp = ui.add(Button::new(
+        RichText::new(label).font(FontId::monospace(11.0))
+            .color(if *val { COL_ACCENT } else { COL_MUTED })
+    )
+    .fill(if *val { Color32::from_rgba_unmultiplied(88, 166, 255, 22) } else { Color32::from_rgb(18, 22, 30) })
+    .stroke(Stroke::new(1.0, if *val { Color32::from_rgba_unmultiplied(88, 166, 255, 100) } else { COL_BORDER }))
+    .rounding(Rounding::same(5.0))
+    .min_size(Vec2::new(0.0, 26.0)))
+    .on_hover_text(tooltip);
+    if resp.clicked() { *val = !*val; }
+    *val != old
+}
+
+// ─── main ─────────────────────────────────────────────────────────────────────
 
 fn main() -> eframe::Result<()> {
     let opts = NativeOptions {
@@ -2679,9 +1834,5 @@ fn main() -> eframe::Result<()> {
             .with_drag_and_drop(true),
         ..Default::default()
     };
-    eframe::run_native(
-        "XTR Log Viewer",
-        opts,
-        Box::new(|_cc| Box::new(LogViewerApp::default())),
-    )
+    eframe::run_native("XTR Log Viewer", opts, Box::new(|_cc| Box::new(LogViewerApp::default())))
 }
