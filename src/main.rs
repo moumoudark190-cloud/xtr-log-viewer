@@ -1169,13 +1169,13 @@ impl App for LogViewerApp {
             let scroll_off = self.current_scroll_offset; let viewport_h = self.scroll_area_height;
             let ml = self.minimap_levels.clone();
             let mut jump_off: Option<f32> = None;
-
+        
             let mm_bg = if self.dark_mode { Color32::from_rgb(9, 12, 17) } else { Color32::from_rgb(225, 230, 242) };
             const MM: [Color32;5] = [
                 Color32::from_rgb(245,95,85), Color32::from_rgb(235,180,55),
                 Color32::from_rgb(70,200,95), Color32::from_rgb(95,165,245), Color32::from_rgb(115,120,135),
             ];
-
+        
             egui::SidePanel::right("minimap_panel").exact_width(30.0).resizable(false)
                 .frame(egui::Frame::none().fill(mm_bg))
                 .show(ctx, |ui| {
@@ -1187,36 +1187,39 @@ impl App for LogViewerApp {
                     if n_filt == 0 { return; }
                     let (bx0, bx1, by0, ah) = (r.min.x+2.0, r.max.x-2.0, r.min.y, r.height());
                     for py in 0..ah as usize {
-                        let i0 = ((py as f32*n_filt as f32/ah) as usize).min(n_filt-1);
-                        let i1 = (((py+1) as f32*n_filt as f32/ah) as usize).min(n_filt-1).max(i0);
-                        let bucket = (i1-i0+1) as f32;
-                        let mut counts = [0u16;5];
+                        let i0 = ((py as f32 * n_filt as f32 / ah) as usize).min(n_filt-1);
+                        let i1 = (((py + 1) as f32 * n_filt as f32 / ah) as usize).min(n_filt-1).max(i0);
+                        let bucket = (i1 - i0 + 1) as f32;
+                        let mut counts = [0u16; 5];
                         for i in i0..=i1 { counts[ml[i] as usize] += 1; }
-                        let dom = (0..5).find(|&l| counts[l] as f32/bucket >= 0.20)
-                            .unwrap_or_else(|| counts.iter().enumerate()
-                                .max_by(|(ia,&ca),(ib,&cb)| ca.cmp(&cb).then(ib.cmp(ia)))
-                                .map(|(i,_)| i).unwrap_or(4));
+                        let dom = (0..5).find(|&l| counts[l] as f32 / bucket >= 0.20)
+                            .unwrap_or_else(|| {
+                                counts.iter().enumerate()
+                                    .max_by(|(ia, ca), (ib, cb)| ca.cmp(cb).then(ia.cmp(ib)))
+                                    .map(|(i, _)| i)
+                                    .unwrap_or(4)
+                            });
                         let y0 = by0 + py as f32;
-                        painter.rect_filled(egui::Rect::from_min_max(egui::pos2(bx0,y0),egui::pos2(bx1,y0+1.5)), Rounding::ZERO, MM[dom]);
+                        painter.rect_filled(egui::Rect::from_min_max(egui::pos2(bx0, y0), egui::pos2(bx1, y0 + 1.5)), Rounding::ZERO, MM[dom]);
                     }
                     let total_h = n_filt as f32 * row_h;
                     if total_h > 0.0 && viewport_h > 0.0 {
-                        let vt = (scroll_off/total_h).clamp(0.0,1.0);
-                        let vb = ((scroll_off+viewport_h)/total_h).clamp(0.0,1.0);
-                        let wy0 = (by0+vt*ah).min(r.max.y-4.0);
-                        let wy1 = (by0+vb*ah).clamp(wy0+4.0, r.max.y);
+                        let vt = (scroll_off / total_h).clamp(0.0, 1.0);
+                        let vb = ((scroll_off + viewport_h) / total_h).clamp(0.0, 1.0);
+                        let wy0 = (by0 + vt * ah).min(r.max.y - 4.0);
+                        let wy1 = (by0 + vb * ah).clamp(wy0 + 4.0, r.max.y);
                         painter.rect(
-                            egui::Rect::from_min_max(egui::pos2(r.min.x+0.5,wy0),egui::pos2(r.max.x-0.5,wy1)),
+                            egui::Rect::from_min_max(egui::pos2(r.min.x + 0.5, wy0), egui::pos2(r.max.x - 0.5, wy1)),
                             Rounding::same(2.0),
-                            Color32::from_rgba_unmultiplied(col.accent.r(),col.accent.g(),col.accent.b(),20),
-                            Stroke::new(1.0, Color32::from_rgba_unmultiplied(col.accent.r(),col.accent.g(),col.accent.b(),120)));
+                            Color32::from_rgba_unmultiplied(col.accent.r(), col.accent.g(), col.accent.b(), 20),
+                            Stroke::new(1.0, Color32::from_rgba_unmultiplied(col.accent.r(), col.accent.g(), col.accent.b(), 120)));
                     }
                     if resp.dragged() || resp.clicked() {
                         if let Some(pos) = resp.interact_pointer_pos() {
-                            let frac = ((pos.y-by0)/ah).clamp(0.0,1.0);
-                            let tr = ((frac*n_filt as f32) as usize).min(n_filt.saturating_sub(1));
-                            let mut toff = tr as f32*row_h;
-                            if total_h > viewport_h { toff = toff.min(total_h-viewport_h); } else { toff = 0.0; }
+                            let frac = ((pos.y - by0) / ah).clamp(0.0, 1.0);
+                            let tr = ((frac * n_filt as f32) as usize).min(n_filt.saturating_sub(1));
+                            let mut toff = tr as f32 * row_h;
+                            if total_h > viewport_h { toff = toff.min(total_h - viewport_h); } else { toff = 0.0; }
                             jump_off = Some(toff);
                         }
                     }
