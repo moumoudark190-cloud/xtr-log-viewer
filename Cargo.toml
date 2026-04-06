@@ -1,8 +1,8 @@
 [package]
-name = "xtr-log-viewer"
+name = "log-viewer"
 version = "1.0.0"
 edition = "2021"
-description = "Fast XTR/CARIAD log viewer — zero runtime dependencies"
+description = "Fast log viewer — zero runtime dependencies"
 
 [[bin]]
 name = "logviewer"
