@@ -1831,28 +1831,34 @@ impl LogViewerApp {
 // ─── main ─────────────────────────────────────────────────────────────────────
 
 fn main() -> eframe::Result<()> {
-    let icon_data = include_bytes!("../assets/icon.png")
+    // Try to load the PNG from the assets folder
+    let icon_data = std::fs::read("assets/icon.png")
         .ok()
-        .and_then(|bytes| image::load_from_memory(bytes).ok())
+        .and_then(|bytes| image::load_from_memory(&bytes).ok())
         .map(|img| {
             let rgba = img.to_rgba8();
             let (w, h) = rgba.dimensions();
             egui::IconData { rgba: rgba.into_raw(), width: w, height: h }
         })
         .unwrap_or_else(|| {
-            let size = 32;
-            let rgba = vec![88, 166, 255, 255; (size * size) as usize];
+            // Fallback: blue square (32x32)
+            let size: u32 = 32;
+            let pixel_count = (size * size) as usize;
+            let mut rgba = Vec::with_capacity(pixel_count * 4);
+            for _ in 0..pixel_count {
+                rgba.extend_from_slice(&[88, 166, 255, 255]); // R,G,B,A
+            }
             egui::IconData { rgba, width: size, height: size }
         });
 
     let opts = NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_title("CLogViewer")
+            .with_title("XTR Log Viewer")
             .with_inner_size([1440.0, 900.0])
             .with_min_inner_size([800.0, 400.0])
             .with_drag_and_drop(true)
             .with_icon(icon_data),
         ..Default::default()
     };
-    eframe::run_native("CLogViewer", opts, Box::new(|_cc| Box::new(LogViewerApp::default())))
+    eframe::run_native("XTR Log Viewer", opts, Box::new(|_cc| Box::new(LogViewerApp::default())))
 }
