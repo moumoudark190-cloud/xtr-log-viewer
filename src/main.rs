@@ -1831,17 +1831,16 @@ impl LogViewerApp {
 // ─── main ─────────────────────────────────────────────────────────────────────
 
 fn main() -> eframe::Result<()> {
-    // Try to load the PNG from the assets folder
-    let icon_data = std::fs::read("assets/icon.png")
+    // Embed the ICO file directly into the binary
+    let icon_data = image::load_from_memory(include_bytes!("../assets/logo.ico"))
         .ok()
-        .and_then(|bytes| image::load_from_memory(&bytes).ok())
         .map(|img| {
             let rgba = img.to_rgba8();
             let (w, h) = rgba.dimensions();
             egui::IconData { rgba: rgba.into_raw(), width: w, height: h }
         })
         .unwrap_or_else(|| {
-            // Fallback: blue square (32x32)
+            // Fallback: blue square (32x32) - only shows if ICO file is missing
             let size: u32 = 32;
             let pixel_count = (size * size) as usize;
             let mut rgba = Vec::with_capacity(pixel_count * 4);
