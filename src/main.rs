@@ -133,6 +133,47 @@ impl Colors {
     }
 }
 
+// ─── Premium Close Button Helper ─────────────────────────────────────────────
+
+fn premium_close_button(ui: &mut egui::Ui, col: &Colors) -> egui::Response {
+    let size = Vec2::splat(28.0);
+    let (rect, response) = ui.allocate_exact_size(size, Sense::click());
+    
+    let is_hovering = response.hovered();
+    
+    // Background: red on hover, transparent otherwise
+    let bg_color = if is_hovering {
+        Color32::from_rgb(220, 60, 50)
+    } else {
+        Color32::TRANSPARENT
+    };
+    
+    // Border: visible only on hover
+    let border = if is_hovering {
+        Stroke::new(1.5, Color32::from_rgb(240, 80, 70))
+    } else {
+        Stroke::NONE
+    };
+    
+    // Text color: white on hover, red when hovering but not clicked, muted normally
+    let text_color = if is_hovering {
+        Color32::WHITE
+    } else if response.hovered() {
+        Color32::from_rgb(220, 60, 50)  // Red when hovering
+    } else {
+        col.muted
+    };
+    
+    let font_size = if is_hovering { 14.0 } else { 12.0 };
+    
+    // Draw
+    ui.painter().rect(rect, Rounding::same(6.0), bg_color, border);
+    ui.painter().text(rect.center(), Align2::CENTER_CENTER, "✕", 
+        FontId::proportional(font_size), text_color);
+    
+    response
+}
+
 // ─── Search ──────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -824,7 +865,7 @@ impl App for LogViewerApp {
                     // Tiny ✕ clear button only when filter is active
                     if filter_active {
                         if ui.add(
-                            Button::new(RichText::new("➜]").color(col.muted).font(FontId::proportional(11.0)))
+                            Button::new(RichText::new("X").color(col.muted).font(FontId::proportional(11.0)))
                                 .fill(Color32::TRANSPARENT)
                                 .stroke(Stroke::NONE)
                                 .min_size(Vec2::new(20.0, 28.0))
@@ -985,7 +1026,7 @@ impl App for LogViewerApp {
                             ).clicked() { self.open_file_dialog(); }
 
                             if ui.add(
-                                Button::new(RichText::new("🧹  Clear")
+                                Button::new(RichText::new("🗑  Clear")
                                     .color(col.muted).font(FontId::proportional(11.5)))
                                     .fill(col.bg_input)
                                     .stroke(Stroke::new(0.5, col.border))
@@ -998,7 +1039,7 @@ impl App for LogViewerApp {
             });
 
         // ════════════════════════════════════════════════════════════════════
-        // FIND DIALOG  (floating window, not a panel — order doesn't matter)
+        // FIND DIALOG  (floating window)
         // ════════════════════════════════════════════════════════════════════
         self.render_find_dialog(ctx, &col);
 
@@ -1064,11 +1105,9 @@ impl App for LogViewerApp {
                             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                                 ui.spacing_mut().item_spacing.x = 6.0;
                                 let mut close = false;
-                                if ui.add(
-                                    Button::new(RichText::new("➜]").color(col.muted).font(FontId::proportional(13.0)))
-                                        .fill(Color32::TRANSPARENT).stroke(Stroke::NONE)
-                                        .rounding(Rounding::same(4.0)).min_size(Vec2::new(28.0, 28.0))
-                                ).on_hover_text("Close (Esc)").clicked() { close = true; }
+                                
+                                // Premium close button in detail panel
+                                if premium_close_button(ui, &col).clicked() { close = true; }
 
                                 let is_bm = self.is_bookmarked(self.selected.unwrap_or(0));
                                 if ui.add(
@@ -1532,13 +1571,12 @@ impl LogViewerApp {
                     painter.text(br.center(), Align2::CENTER_CENTER, badge, FontId::monospace(11.0), col.accent);
                 }
 
-                let cr = egui::Rect::from_center_size(egui::pos2(rect.max.x-18.0, rect.center().y), Vec2::splat(28.0));
-                let cresp = ui.interact(cr, egui::Id::new("dlg_cls"), Sense::click());
-                let xcol = if cresp.hovered() { Color32::from_rgb(255,100,100) } else { col.muted };
-                painter.text(cr.center(), Align2::CENTER_CENTER, "➜]", FontId::proportional(13.0), xcol);
+                // Premium close button in find dialog
+                let close_btn = premium_close_button(ui, col);
+                if close_btn.clicked() { close_req = true; }
+
                 painter.line_segment([egui::pos2(rect.min.x,rect.max.y), egui::pos2(rect.max.x,rect.max.y)],
                     Stroke::new(1.0, col.border));
-                if cresp.clicked() { close_req = true; }
 
                 // Body
                 egui::Frame::none()
@@ -1691,9 +1729,10 @@ impl LogViewerApp {
                                 .font(FontId::proportional(11.5)).color(col.muted));
                             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                                 ui.spacing_mut().item_spacing.x = 6.0;
-                                if ui.add(Button::new(RichText::new("➜]").color(col.muted))
-                                    .fill(Color32::TRANSPARENT).stroke(Stroke::NONE)
-                                    .min_size(Vec2::splat(26.0))).clicked() { close_panel = true; }
+                                
+                                // Premium close button in results panel
+                                if premium_close_button(ui, col).clicked() { close_panel = true; }
+                                
                                 if ui.add(
                                     Button::new(RichText::new("📋 Copy").color(col.muted).font(FontId::proportional(11.5)))
                                         .fill(col.bg_input).stroke(Stroke::new(0.5, col.border))
