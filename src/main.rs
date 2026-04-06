@@ -1837,10 +1837,12 @@ fn main() -> eframe::Result<()> {
         .and_then(|bytes| image::load_from_memory(&bytes).ok())
         .map(|img| {
             let rgba = img.to_rgba8();
+            let width = rgba.width();   // Get width before moving
+            let height = rgba.height(); // Get height before moving
             egui::IconData {
-                rgba: rgba.into_raw(),
-                width: rgba.width(),   // Already u32
-                height: rgba.height(), // Already u32
+                rgba: rgba.into_raw(), // Now move is fine
+                width,
+                height,
             }
         });
 
@@ -1869,5 +1871,5 @@ fn main() -> eframe::Result<()> {
             })),
         ..Default::default()
     };
-    eframe::run_native("Log Viewer", opts, Box::new(|_cc| Box::new(LogViewerApp::default())))
+    eframe::run_native("XTR Log Viewer", opts, Box::new(|_cc| Box::new(LogViewerApp::default())))
 }
