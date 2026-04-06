@@ -1831,13 +1831,35 @@ impl LogViewerApp {
 // ─── main ─────────────────────────────────────────────────────────────────────
 
 fn main() -> eframe::Result<()> {
+    // Load icon from assets folder
+    let icon = std::fs::read("assets/logo.ico")
+        .ok()
+        .and_then(|bytes| image::load_from_memory(&bytes).ok())
+        .map(|img| {
+            let rgba = img.to_rgba8();
+            egui::IconData {
+                rgba: rgba.into_raw(),
+                width: rgba.width() as usize,
+                height: rgba.height() as usize,
+            }
+        });
+
     let opts = NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_title("XTR Log Viewer")
+            .with_title("Log Viewer")
             .with_inner_size([1440.0, 900.0])
             .with_min_inner_size([800.0, 400.0])
-            .with_drag_and_drop(true),
+            .with_drag_and_drop(true)
+            .with_icon(icon.unwrap_or_else(|| {
+                // Fallback blue icon if file not found
+                let size = 32;
+                egui::IconData {
+                    rgba: vec![88, 166, 255, 255; size * size],
+                    width: size,
+                    height: size,
+                }
+            })),
         ..Default::default()
     };
-    eframe::run_native("XTR Log Viewer", opts, Box::new(|_cc| Box::new(LogViewerApp::default())))
+    eframe::run_native("Log Viewer", opts, Box::new(|_cc| Box::new(LogViewerApp::default())))
 }
