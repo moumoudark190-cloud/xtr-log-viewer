@@ -765,7 +765,7 @@ impl App for LogViewerApp {
                         ui.separator();
                         if ui.button("🗑  Clear").clicked() { self.clear_file(); ui.close_menu(); }
                         ui.separator();
-                        if ui.button("✕  Exit  Alt+F4").clicked() { ctx.send_viewport_cmd(egui::ViewportCommand::Close); }
+                        if ui.button("⏻  Exit  Alt+F4").clicked() { ctx.send_viewport_cmd(egui::ViewportCommand::Close); }
                     });
 
                     ui.menu_button(mb("Help"), |ui| {
@@ -824,7 +824,7 @@ impl App for LogViewerApp {
                     // Tiny ✕ clear button only when filter is active
                     if filter_active {
                         if ui.add(
-                            Button::new(RichText::new("✕").color(col.muted).font(FontId::proportional(11.0)))
+                            Button::new(RichText::new("➜]").color(col.muted).font(FontId::proportional(11.0)))
                                 .fill(Color32::TRANSPARENT)
                                 .stroke(Stroke::NONE)
                                 .min_size(Vec2::new(20.0, 28.0))
@@ -985,7 +985,7 @@ impl App for LogViewerApp {
                             ).clicked() { self.open_file_dialog(); }
 
                             if ui.add(
-                                Button::new(RichText::new("✕  Clear")
+                                Button::new(RichText::new("🧹  Clear")
                                     .color(col.muted).font(FontId::proportional(11.5)))
                                     .fill(col.bg_input)
                                     .stroke(Stroke::new(0.5, col.border))
@@ -1065,7 +1065,7 @@ impl App for LogViewerApp {
                                 ui.spacing_mut().item_spacing.x = 6.0;
                                 let mut close = false;
                                 if ui.add(
-                                    Button::new(RichText::new("✕").color(col.muted).font(FontId::proportional(13.0)))
+                                    Button::new(RichText::new("➜]").color(col.muted).font(FontId::proportional(13.0)))
                                         .fill(Color32::TRANSPARENT).stroke(Stroke::NONE)
                                         .rounding(Rounding::same(4.0)).min_size(Vec2::new(28.0, 28.0))
                                 ).on_hover_text("Close (Esc)").clicked() { close = true; }
@@ -1535,7 +1535,7 @@ impl LogViewerApp {
                 let cr = egui::Rect::from_center_size(egui::pos2(rect.max.x-18.0, rect.center().y), Vec2::splat(28.0));
                 let cresp = ui.interact(cr, egui::Id::new("dlg_cls"), Sense::click());
                 let xcol = if cresp.hovered() { Color32::from_rgb(255,100,100) } else { col.muted };
-                painter.text(cr.center(), Align2::CENTER_CENTER, "✕", FontId::proportional(13.0), xcol);
+                painter.text(cr.center(), Align2::CENTER_CENTER, "➜]", FontId::proportional(13.0), xcol);
                 painter.line_segment([egui::pos2(rect.min.x,rect.max.y), egui::pos2(rect.max.x,rect.max.y)],
                     Stroke::new(1.0, col.border));
                 if cresp.clicked() { close_req = true; }
@@ -1691,7 +1691,7 @@ impl LogViewerApp {
                                 .font(FontId::proportional(11.5)).color(col.muted));
                             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                                 ui.spacing_mut().item_spacing.x = 6.0;
-                                if ui.add(Button::new(RichText::new("✕").color(col.muted))
+                                if ui.add(Button::new(RichText::new("➜]").color(col.muted))
                                     .fill(Color32::TRANSPARENT).stroke(Stroke::NONE)
                                     .min_size(Vec2::splat(26.0))).clicked() { close_panel = true; }
                                 if ui.add(
