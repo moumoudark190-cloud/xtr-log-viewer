@@ -1533,7 +1533,7 @@ impl App for LogViewerApp {
 // ─── Find dialog ─────────────────────────────────────────────────────────────
 
 impl LogViewerApp {
-    fn render_find_dialog(&mut self, ctx: &egui::Context, col: &Colors) {
+fn render_find_dialog(&mut self, ctx: &egui::Context, col: &Colors) {
     if !self.find_dialog_open { return; }
 
     let screen = ctx.screen_rect();
@@ -1556,7 +1556,7 @@ impl LogViewerApp {
             let hh = 44.0;
             let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), hh), Sense::hover());
             
-            // Draw header background
+            // Draw header background (using direct calls, no stored painter)
             let hdr_bg = if self.dark_mode { Color32::from_rgb(20,25,36) } else { col.bg_input };
             ui.painter().rect_filled(rect, Rounding{nw:10.0,ne:10.0,sw:0.0,se:0.0}, hdr_bg);
             ui.painter().text(egui::pos2(rect.min.x+18.0, rect.center().y), Align2::LEFT_CENTER,
@@ -1572,11 +1572,11 @@ impl LogViewerApp {
                 ui.painter().text(br.center(), Align2::CENTER_CENTER, badge, FontId::monospace(11.0), col.accent);
             }
 
-            // Draw separator line before adding the close button
+            // Draw separator line
             ui.painter().line_segment([egui::pos2(rect.min.x,rect.max.y), egui::pos2(rect.max.x,rect.max.y)],
                 Stroke::new(1.0, col.border));
 
-            // Premium close button - drawn after painter operations are done
+            // Premium close button - now we can call it after all painter calls are done
             let close_btn = premium_close_button(ui, col);
             if close_btn.clicked() { close_req = true; }
 
@@ -1695,7 +1695,6 @@ impl LogViewerApp {
 
     if close_req { self.find_dialog_open = false; }
 }
-
     fn render_results_panel(&mut self, ctx: &egui::Context, col: &Colors) {
         if !self.search.results_panel_open || self.search.matches.is_empty() { return; }
 
