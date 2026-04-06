@@ -1846,20 +1846,27 @@ fn main() -> eframe::Result<()> {
 
     let opts = NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_title("Log Viewer")
+            .with_title("XTR Log Viewer")
             .with_inner_size([1440.0, 900.0])
             .with_min_inner_size([800.0, 400.0])
             .with_drag_and_drop(true)
             .with_icon(icon.unwrap_or_else(|| {
                 // Fallback blue icon if file not found
                 let size = 32;
+                let mut rgba = Vec::with_capacity(size * size * 4);
+                for _ in 0..(size * size) {
+                    rgba.push(88);  // R
+                    rgba.push(166); // G
+                    rgba.push(255); // B
+                    rgba.push(255); // A
+                }
                 egui::IconData {
-                    rgba: vec![88, 166, 255, 255; size * size],
+                    rgba,
                     width: size,
                     height: size,
                 }
             })),
         ..Default::default()
     };
-    eframe::run_native("Log Viewer", opts, Box::new(|_cc| Box::new(LogViewerApp::default())))
+    eframe::run_native("XTR Log Viewer", opts, Box::new(|_cc| Box::new(LogViewerApp::default())))
 }
