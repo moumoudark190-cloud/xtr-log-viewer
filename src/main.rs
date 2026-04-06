@@ -1852,12 +1852,12 @@ fn main() -> eframe::Result<()> {
 
     let opts = NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_title("XTR Log Viewer")
+            .with_title("CLogViewer")
             .with_inner_size([1440.0, 900.0])
             .with_min_inner_size([800.0, 400.0])
             .with_drag_and_drop(true)
             .with_icon(icon_data),
         ..Default::default()
     };
-    eframe::run_native("XTR Log Viewer", opts, Box::new(|_cc| Box::new(LogViewerApp::default())))
+    eframe::run_native("CLogViewer", opts, Box::new(|_cc| Box::new(LogViewerApp::default())))
 }
