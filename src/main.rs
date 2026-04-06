@@ -1839,8 +1839,8 @@ fn main() -> eframe::Result<()> {
             let rgba = img.to_rgba8();
             egui::IconData {
                 rgba: rgba.into_raw(),
-                width: rgba.width() as usize,
-                height: rgba.height() as usize,
+                width: rgba.width(),   // Already u32
+                height: rgba.height(), // Already u32
             }
         });
 
@@ -1851,10 +1851,11 @@ fn main() -> eframe::Result<()> {
             .with_min_inner_size([800.0, 400.0])
             .with_drag_and_drop(true)
             .with_icon(icon.unwrap_or_else(|| {
-                // Fallback blue icon if file not found
-                let size = 32;
-                let mut rgba = Vec::with_capacity(size * size * 4);
-                for _ in 0..(size * size) {
+                // Fallback blue icon
+                let size: u32 = 32;
+                let pixel_count = (size * size) as usize;
+                let mut rgba = Vec::with_capacity(pixel_count * 4);
+                for _ in 0..pixel_count {
                     rgba.push(88);  // R
                     rgba.push(166); // G
                     rgba.push(255); // B
@@ -1868,5 +1869,5 @@ fn main() -> eframe::Result<()> {
             })),
         ..Default::default()
     };
-    eframe::run_native("XTR Log Viewer", opts, Box::new(|_cc| Box::new(LogViewerApp::default())))
+    eframe::run_native("Log Viewer", opts, Box::new(|_cc| Box::new(LogViewerApp::default())))
 }
