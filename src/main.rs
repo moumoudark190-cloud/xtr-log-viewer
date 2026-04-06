@@ -732,9 +732,9 @@ impl App for LogViewerApp {
 
         if let Some(ref path) = self.current_file {
             ctx.send_viewport_cmd(egui::ViewportCommand::Title(
-                format!("{} — XTR Log Viewer", path.file_name().unwrap_or_default().to_string_lossy())));
+                format!("{} — CLogViewer", path.file_name().unwrap_or_default().to_string_lossy())));
         } else {
-            ctx.send_viewport_cmd(egui::ViewportCommand::Title("XTR Log Viewer".to_string()));
+            ctx.send_viewport_cmd(egui::ViewportCommand::Title("CLogViewer".to_string()));
         }
 
         // Drag & drop
@@ -1831,45 +1831,28 @@ impl LogViewerApp {
 // ─── main ─────────────────────────────────────────────────────────────────────
 
 fn main() -> eframe::Result<()> {
-    // Load icon from assets folder
-    let icon = std::fs::read("assets/logo.ico")
+    let icon_data = include_bytes!("../assets/icon.png")
         .ok()
-        .and_then(|bytes| image::load_from_memory(&bytes).ok())
+        .and_then(|bytes| image::load_from_memory(bytes).ok())
         .map(|img| {
             let rgba = img.to_rgba8();
-            let width = rgba.width();   // Get width before moving
-            let height = rgba.height(); // Get height before moving
-            egui::IconData {
-                rgba: rgba.into_raw(), // Now move is fine
-                width,
-                height,
-            }
+            let (w, h) = rgba.dimensions();
+            egui::IconData { rgba: rgba.into_raw(), width: w, height: h }
+        })
+        .unwrap_or_else(|| {
+            let size = 32;
+            let rgba = vec![88, 166, 255, 255; (size * size) as usize];
+            egui::IconData { rgba, width: size, height: size }
         });
 
     let opts = NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_title("XTR Log Viewer")
+            .with_title("CLogViewer")
             .with_inner_size([1440.0, 900.0])
             .with_min_inner_size([800.0, 400.0])
             .with_drag_and_drop(true)
-            .with_icon(icon.unwrap_or_else(|| {
-                // Fallback blue icon
-                let size: u32 = 32;
-                let pixel_count = (size * size) as usize;
-                let mut rgba = Vec::with_capacity(pixel_count * 4);
-                for _ in 0..pixel_count {
-                    rgba.push(88);  // R
-                    rgba.push(166); // G
-                    rgba.push(255); // B
-                    rgba.push(255); // A
-                }
-                egui::IconData {
-                    rgba,
-                    width: size,
-                    height: size,
-                }
-            })),
+            .with_icon(icon_data),
         ..Default::default()
     };
-    eframe::run_native("XTR Log Viewer", opts, Box::new(|_cc| Box::new(LogViewerApp::default())))
+    eframe::run_native("CLogViewer", opts, Box::new(|_cc| Box::new(LogViewerApp::default())))
 }
