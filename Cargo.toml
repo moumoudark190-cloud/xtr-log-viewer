@@ -51,4 +51,4 @@ winres = "0.1"
 
 # Optional: Add icon to Windows executable
 [package.metadata.winres]
-icon = "assets/icon.ico"
+icon = "assets/logo.ico"
