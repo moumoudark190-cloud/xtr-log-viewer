@@ -998,17 +998,17 @@ impl App for LogViewerApp {
             });
 
         // ════════════════════════════════════════════════════════════════════
-        // FIND DIALOG
+        // FIND DIALOG  (floating window, not a panel — order doesn't matter)
         // ════════════════════════════════════════════════════════════════════
         self.render_find_dialog(ctx, &col);
 
-        // ════════════════════════════════════════════════════════════════════
-        // RESULTS PANEL
-        // ════════════════════════════════════════════════════════════════════
-        self.render_results_panel(ctx, &col);
+        // Bottom panels are stacked bottom-to-top in declaration order:
+        //   1. statusbar  — always at the very bottom edge
+        //   2. detail     — above statusbar, pinned to bottom
+        //   3. results    — above detail, closest to the log area
 
         // ════════════════════════════════════════════════════════════════════
-        // STATUS BAR
+        // STATUS BAR  (1 — very bottom)
         // ════════════════════════════════════════════════════════════════════
         egui::TopBottomPanel::bottom("statusbar")
             .exact_height(26.0)
@@ -1043,7 +1043,7 @@ impl App for LogViewerApp {
             });
 
         // ════════════════════════════════════════════════════════════════════
-        // DETAIL PANEL
+        // DETAIL PANEL  (2 — above statusbar)
         // ════════════════════════════════════════════════════════════════════
         if self.detail_open {
             let sel: Option<LogLine> = self.selected
@@ -1116,6 +1116,11 @@ impl App for LogViewerApp {
                     });
             }
         }
+
+        // ════════════════════════════════════════════════════════════════════
+        // RESULTS PANEL  (3 — above detail, closest to the log area)
+        // ════════════════════════════════════════════════════════════════════
+        self.render_results_panel(ctx, &col);
 
         // ════════════════════════════════════════════════════════════════════
         // MINIMAP
