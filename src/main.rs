@@ -72,7 +72,7 @@ impl Colors {
     fn dark() -> Self {
         Self {
             bg_base:      Color32::from_rgb(13,  17,  23),
-            bg_panel:     Color32::from_rgb(18,  22,  30),
+            bg_panel:     Color32::from_rgb(28, 34, 46),
             bg_input:     Color32::from_rgb(10,  13,  20),
             bg_row_hover: Color32::from_rgba_premultiplied(255,255,255,10),
             bg_row_sel:   Color32::from_rgba_premultiplied(88,166,255,45),
