@@ -1,5 +1,5 @@
 [package]
-name = "log-viewer"
+name = "CLogViewer"
 version = "1.0.0"
 edition = "2024"
 description = "Fast log viewer — zero runtime dependencies"
@@ -9,7 +9,7 @@ repository = "https://github.com/moumoudark190-cloud/xtr-log-viewer"
 readme = "README.md"
 
 [[bin]]
-name = "logviewer"
+name = "CLogViewer"
 path = "src/main.rs"
 
 [dependencies]
