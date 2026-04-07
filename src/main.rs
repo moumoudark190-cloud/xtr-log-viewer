@@ -851,27 +851,66 @@ impl App for LogViewerApp {
                     ui.spacing_mut().item_spacing.x = 8.0;
 
                     let filter_active = !self.filter_text.is_empty();
-                    let te = ui.add(
-                        TextEdit::singleline(&mut self.filter_text)
-                            .id(egui::Id::new("toolbar_filter"))
-                            .hint_text(RichText::new("🔍  Filter log…").color(col.faint))
-                            .desired_width(200.0)
-                            .font(FontId::monospace(12.5))
-                            .frame(true),
-                    );
-                    if te.changed() { self.apply_filters(); }
-
-                    if filter_active {
-                        if ui.add(
-                            Button::new(RichText::new("X").color(col.muted).font(FontId::proportional(11.0)))
-                                .fill(Color32::TRANSPARENT)
-                                .stroke(Stroke::NONE)
-                                .min_size(Vec2::new(20.0, 28.0))
-                        ).on_hover_text("Clear filter").clicked() {
-                            self.filter_text.clear();
-                            self.apply_filters();
-                        }
-                    }
+                    let search_bar_bg = if self.dark_mode {
+                        Color32::from_rgb(22, 27, 38)
+                    } else {
+                        Color32::from_rgb(255, 255, 255)
+                    };
+                    let search_bar_border = if filter_active {
+                        Color32::from_rgba_unmultiplied(col.accent.r(), col.accent.g(), col.accent.b(), 120)
+                    } else {
+                        col.border
+                    };
+                    
+                    let bar_resp = egui::Frame::none()
+                        .fill(search_bar_bg)
+                        .stroke(Stroke::new(1.0, search_bar_border))
+                        .rounding(Rounding::same(5.0))
+                        .inner_margin(egui::Margin { left: 8.0, right: 4.0, top: 0.0, bottom: 0.0 })
+                        .show(ui, |ui| {
+                            ui.set_height(26.0);
+                            ui.horizontal(|ui| {
+                                ui.spacing_mut().item_spacing.x = 5.0;
+                    
+                                // Search icon — dims when empty, accents when active
+                                ui.label(
+                                    RichText::new("⌕")
+                                        .font(FontId::proportional(16.0))
+                                        .color(if filter_active { col.accent } else { col.faint }),
+                                );
+                    
+                                let te = ui.add(
+                                    TextEdit::singleline(&mut self.filter_text)
+                                        .id(egui::Id::new("toolbar_filter"))
+                                        .hint_text(RichText::new("Filter…").color(col.faint))
+                                        .desired_width(168.0)
+                                        .font(FontId::proportional(12.5))
+                                        .frame(false),
+                                );
+                                if te.changed() { self.apply_filters(); }
+                    
+                                // Inline ✕ only when there's text — flush right inside bar
+                                if filter_active {
+                                    if ui.add(
+                                        Button::new(
+                                            RichText::new("✕")
+                                                .font(FontId::proportional(10.5))
+                                                .color(col.faint),
+                                        )
+                                        .fill(Color32::TRANSPARENT)
+                                        .stroke(Stroke::NONE)
+                                        .min_size(Vec2::new(20.0, 20.0)),
+                                    )
+                                    .on_hover_text("Clear  Esc")
+                                    .clicked()
+                                    {
+                                        self.filter_text.clear();
+                                        self.apply_filters();
+                                    }
+                                }
+                            });
+                        });
+                    let _ = bar_resp;
 
                     if !self.modules.is_empty() {
                         ui.add(egui::Separator::default().vertical().spacing(4.0));
