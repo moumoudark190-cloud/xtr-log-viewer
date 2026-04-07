@@ -778,8 +778,6 @@ impl App for LogViewerApp {
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 2.0;
-                    ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing.x = 2.0;
         
                     ui.visuals_mut().widgets.inactive.bg_fill   = Color32::TRANSPARENT;
                     ui.visuals_mut().widgets.inactive.bg_stroke = Stroke::NONE;
