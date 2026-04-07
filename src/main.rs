@@ -1543,172 +1543,408 @@ impl App for LogViewerApp {
 impl LogViewerApp {
     fn render_find_dialog(&mut self, ctx: &egui::Context, col: &Colors) {
         if !self.find_dialog_open { return; }
-
-        let screen = ctx.screen_rect();
-        let dw = 480.0;
-        let pos = egui::pos2((screen.width()-dw)/2.0, 88.0);
+    
         let mut close_req = false;
-
+    
+        // Translucent frosted-glass frame
+        let panel_fill = if self.dark_mode {
+            Color32::from_rgba_unmultiplied(16, 20, 30, 210)
+        } else {
+            Color32::from_rgba_unmultiplied(240, 244, 255, 215)
+        };
+        let border_col = if self.dark_mode {
+            Color32::from_rgba_unmultiplied(88, 166, 255, 60)
+        } else {
+            Color32::from_rgba_unmultiplied(30, 110, 220, 50)
+        };
+    
         Window::new("find_dlg_w")
             .id(egui::Id::new("find_dlg"))
-            .fixed_pos(pos).fixed_size([dw, 260.0])
-            .collapsible(false).resizable(false).title_bar(false)
-            .frame(egui::Frame::none()
-                .fill(col.bg_panel)
-                .stroke(Stroke::new(1.5, col.border_hl))
-                .rounding(Rounding::same(10.0)))
+            .default_pos(egui::pos2(80.0, 88.0))   // remembers drag position
+            .fixed_size([420.0, 230.0])
+            .collapsible(false)
+            .resizable(false)
+            .title_bar(false)
+            .frame(
+                egui::Frame::none()
+                    .fill(panel_fill)
+                    .stroke(Stroke::new(1.0, border_col))
+                    .rounding(Rounding::same(12.0))
+                    .shadow(egui::epaint::Shadow {
+                        offset: Vec2::new(0.0, 8.0),
+                        blur: 28.0,
+                        spread: 0.0,
+                        color: Color32::from_black_alpha(120),
+                    }),
+            )
             .show(ctx, |ui| {
                 ui.spacing_mut().item_spacing = Vec2::ZERO;
-
-                // FIX 2: header uses a proper horizontal layout so the close button
-                //         is actually positioned in the top-right, not below the header.
-                let hdr_bg = if self.dark_mode { Color32::from_rgb(20,25,36) } else { col.bg_input };
-                egui::Frame::none()
-                    .fill(hdr_bg)
-                    .rounding(Rounding { nw: 10.0, ne: 10.0, sw: 0.0, se: 0.0 })
-                    .inner_margin(egui::Margin { left: 18.0, right: 8.0, top: 8.0, bottom: 8.0 })
+    
+                // ── Drag handle / title bar ──────────────────────────────────
+                let hdr_fill = if self.dark_mode {
+                    Color32::from_rgba_unmultiplied(22, 28, 42, 230)
+                } else {
+                    Color32::from_rgba_unmultiplied(220, 228, 248, 220)
+                };
+    
+                let hdr_resp = egui::Frame::none()
+                    .fill(hdr_fill)
+                    .rounding(Rounding { nw: 12.0, ne: 12.0, sw: 0.0, se: 0.0 })
+                    .inner_margin(egui::Margin { left: 16.0, right: 8.0, top: 7.0, bottom: 7.0 })
                     .show(ui, |ui| {
                         ui.horizontal(|ui| {
-                            ui.set_min_height(28.0);
-                            ui.label(RichText::new("Find")
-                                .font(FontId::proportional(14.0)).color(col.text));
-
+                            ui.set_min_height(26.0);
+    
+                            // Grab icon hint
+                            ui.label(
+                                RichText::new("⠿")
+                                    .font(FontId::proportional(13.0))
+                                    .color(col.faint),
+                            );
+                            ui.add_space(6.0);
+    
+                            ui.label(
+                                RichText::new("Find")
+                                    .font(FontId::proportional(13.0))
+                                    .color(col.text)
+                                    .strong(),
+                            );
+    
                             if !self.search.matches.is_empty() {
-                                ui.add_space(10.0);
-                                let badge = format!("{} / {}",
+                                ui.add_space(8.0);
+                                let badge = format!(
+                                    "{} / {}",
                                     self.search.current_match_idx + 1,
-                                    self.search.matches.len());
+                                    self.search.matches.len()
+                                );
                                 egui::Frame::none()
                                     .fill(Color32::from_rgba_unmultiplied(
-                                        col.accent.r(), col.accent.g(), col.accent.b(), 35))
-                                    .rounding(Rounding::same(11.0))
-                                    .inner_margin(egui::Margin::symmetric(10.0, 3.0))
+                                        col.accent.r(), col.accent.g(), col.accent.b(), 40,
+                                    ))
+                                    .rounding(Rounding::same(10.0))
+                                    .inner_margin(egui::Margin::symmetric(9.0, 2.0))
                                     .show(ui, |ui| {
-                                        ui.label(RichText::new(badge)
-                                            .font(FontId::monospace(11.0)).color(col.accent));
+                                        ui.label(
+                                            RichText::new(badge)
+                                                .font(FontId::monospace(10.0))
+                                                .color(col.accent),
+                                        );
                                     });
                             }
-
+    
                             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                if premium_close_button(ui, col).clicked() { close_req = true; }
+                                if premium_close_button(ui, col).clicked() {
+                                    close_req = true;
+                                }
                             });
                         });
-                    });
-
-                ui.add(egui::Separator::default().horizontal().spacing(0.0));
-
-                // Body
+                    })
+                    .response;
+    
+                // Make the header draggable so the whole window follows
+                if hdr_resp.interact(Sense::drag()).dragged() {
+                    // egui Window handles its own drag via the id — nothing extra needed;
+                    // keeping the interact call here ensures the cursor changes on hover.
+                }
+    
+                // Thin accent divider
+                ui.painter().rect_filled(
+                    egui::Rect::from_min_size(
+                        ui.cursor().min,
+                        Vec2::new(ui.available_width(), 1.0),
+                    ),
+                    Rounding::ZERO,
+                    Color32::from_rgba_unmultiplied(
+                        col.accent.r(), col.accent.g(), col.accent.b(), 55,
+                    ),
+                );
+                ui.add_space(1.0);
+    
+                // ── Body ────────────────────────────────────────────────────
                 egui::Frame::none()
-                    .inner_margin(egui::Margin{left:20.0,right:20.0,top:16.0,bottom:16.0})
+                    .inner_margin(egui::Margin { left: 18.0, right: 18.0, top: 14.0, bottom: 14.0 })
                     .show(ui, |ui| {
                         ui.spacing_mut().item_spacing.y = 0.0;
-
-                        let te_resp = ui.add(
-                            TextEdit::singleline(&mut self.search.find_what)
-                                .hint_text(RichText::new("Search…").color(col.faint))
-                                .desired_width(ui.available_width())
-                                .font(FontId::monospace(13.0))
-                                .frame(true)
-                        );
-                        if te_resp.changed() {
-                            self.search.first_search = true;
-                            self.search.find_all(&self.filtered, &self.all_lines);
-                        }
-                        let enter_pressed = te_resp.lost_focus()
-                            && ui.input(|i| i.key_pressed(Key::Enter));
-
-                        ui.add_space(14.0);
-
+    
+                        // Search input with inline clear button
+                        let input_bg = if self.dark_mode {
+                            Color32::from_rgba_unmultiplied(10, 13, 22, 200)
+                        } else {
+                            Color32::from_rgba_unmultiplied(255, 255, 255, 220)
+                        };
+                        let input_border = if self.search.find_what.is_empty() {
+                            col.border
+                        } else {
+                            Color32::from_rgba_unmultiplied(
+                                col.accent.r(), col.accent.g(), col.accent.b(), 160,
+                            )
+                        };
+    
+                        egui::Frame::none()
+                            .fill(input_bg)
+                            .stroke(Stroke::new(1.0, input_border))
+                            .rounding(Rounding::same(8.0))
+                            .inner_margin(egui::Margin { left: 10.0, right: 4.0, top: 0.0, bottom: 0.0 })
+                            .show(ui, |ui| {
+                                ui.horizontal(|ui| {
+                                    ui.label(
+                                        RichText::new("⌕")
+                                            .font(FontId::proportional(15.0))
+                                            .color(col.faint),
+                                    );
+                                    ui.add_space(4.0);
+                                    let te = ui.add(
+                                        TextEdit::singleline(&mut self.search.find_what)
+                                            .hint_text(
+                                                RichText::new("Search in log…").color(col.faint),
+                                            )
+                                            .desired_width(ui.available_width() - 30.0)
+                                            .font(FontId::monospace(12.5))
+                                            .frame(false),
+                                    );
+                                    if te.changed() {
+                                        self.search.first_search = true;
+                                        self.search.find_all(&self.filtered, &self.all_lines);
+                                    }
+                                    let enter_pressed = te.lost_focus()
+                                        && ui.input(|i| i.key_pressed(Key::Enter));
+    
+                                    if !self.search.find_what.is_empty() {
+                                        if ui.add(
+                                            Button::new(
+                                                RichText::new("✕")
+                                                    .font(FontId::proportional(11.0))
+                                                    .color(col.faint),
+                                            )
+                                            .fill(Color32::TRANSPARENT)
+                                            .stroke(Stroke::NONE)
+                                            .min_size(Vec2::new(24.0, 24.0)),
+                                        )
+                                        .clicked()
+                                        {
+                                            self.search.find_what.clear();
+                                            self.search.find_all(&self.filtered, &self.all_lines);
+                                        }
+                                    }
+    
+                                    // Capture enter here (needs to be in same scope as te)
+                                    if enter_pressed { self.do_find_next(); }
+                                });
+                            });
+    
+                        ui.add_space(10.0);
+    
+                        // ── Options row ──────────────────────────────────────
                         ui.horizontal(|ui| {
-                            ui.spacing_mut().item_spacing.x = 18.0;
+                            ui.spacing_mut().item_spacing.x = 4.0;
                             let mut chg = false;
-                            chg |= ui.checkbox(&mut self.search.match_case,  "Case").changed();
-                            chg |= ui.checkbox(&mut self.search.whole_word,  "Whole word").changed();
-                            chg |= ui.checkbox(&mut self.search.wrap_around, "Wrap").changed();
-                            chg |= ui.checkbox(&mut self.search.backward,    "Backward").changed();
+    
+                            for (val, label) in [
+                                (&mut self.search.match_case,  "Aa"),
+                                (&mut self.search.whole_word,  "\"W\""),
+                                (&mut self.search.wrap_around, "↻"),
+                                (&mut self.search.backward,    "↑"),
+                            ] {
+                                let active = *val;
+                                let (fg, bg, stroke) = if active {
+                                    (
+                                        col.accent,
+                                        Color32::from_rgba_unmultiplied(
+                                            col.accent.r(), col.accent.g(), col.accent.b(), 28,
+                                        ),
+                                        Stroke::new(
+                                            1.0,
+                                            Color32::from_rgba_unmultiplied(
+                                                col.accent.r(), col.accent.g(), col.accent.b(), 140,
+                                            ),
+                                        ),
+                                    )
+                                } else {
+                                    (col.faint, Color32::TRANSPARENT, Stroke::new(0.5, col.border))
+                                };
+                                if ui
+                                    .add(
+                                        Button::new(
+                                            RichText::new(label)
+                                                .font(FontId::monospace(11.5))
+                                                .color(fg),
+                                        )
+                                        .fill(bg)
+                                        .stroke(stroke)
+                                        .rounding(Rounding::same(6.0))
+                                        .min_size(Vec2::new(34.0, 28.0)),
+                                    )
+                                    .on_hover_text(match label {
+                                        "Aa"    => "Match case",
+                                        "\"W\"" => "Whole word",
+                                        "↻"     => "Wrap around",
+                                        _       => "Search backward",
+                                    })
+                                    .clicked()
+                                {
+                                    *val = !*val;
+                                    chg = true;
+                                }
+                            }
+    
                             if chg {
                                 self.search.first_search = true;
                                 self.search.find_all(&self.filtered, &self.all_lines);
                             }
-                        });
-
-                        ui.add_space(10.0);
-
-                        ui.horizontal(|ui| {
-                            ui.spacing_mut().item_spacing.x = 4.0;
-                            ui.label(RichText::new("Mode:").font(FontId::monospace(10.5)).color(col.faint));
-                            ui.add_space(4.0);
-                            for (mode, lbl) in [(SearchMode::Normal,"Normal"),
-                                (SearchMode::Extended,"Extended (\\n \\t)"),
-                                (SearchMode::Regex,"Regex")] {
+    
+                            ui.add_space(6.0);
+                            ui.add(egui::Separator::default().vertical().spacing(4.0));
+                            ui.add_space(6.0);
+    
+                            // Mode pills
+                            for (mode, lbl) in [
+                                (SearchMode::Normal,   "Normal"),
+                                (SearchMode::Extended, "Ext"),
+                                (SearchMode::Regex,    "Regex"),
+                            ] {
                                 let sel = self.search.mode == mode;
-                                if ui.add(Button::new(
-                                    RichText::new(lbl).font(FontId::proportional(11.0))
-                                        .color(if sel { col.accent } else { col.muted }))
-                                    .fill(if sel { Color32::from_rgba_unmultiplied(col.accent.r(),col.accent.g(),col.accent.b(),22) } else { Color32::TRANSPARENT })
-                                    .stroke(if sel { Stroke::new(1.0, Color32::from_rgba_unmultiplied(col.accent.r(),col.accent.g(),col.accent.b(),100)) } else { Stroke::NONE })
-                                    .rounding(Rounding::same(5.0)).min_size(Vec2::new(0.0, 24.0))).clicked() {
+                                if ui
+                                    .add(
+                                        Button::new(
+                                            RichText::new(lbl)
+                                                .font(FontId::proportional(10.5))
+                                                .color(if sel { col.accent } else { col.faint }),
+                                        )
+                                        .fill(if sel {
+                                            Color32::from_rgba_unmultiplied(
+                                                col.accent.r(), col.accent.g(), col.accent.b(), 22,
+                                            )
+                                        } else {
+                                            Color32::TRANSPARENT
+                                        })
+                                        .stroke(if sel {
+                                            Stroke::new(
+                                                1.0,
+                                                Color32::from_rgba_unmultiplied(
+                                                    col.accent.r(), col.accent.g(), col.accent.b(), 100,
+                                                ),
+                                            )
+                                        } else {
+                                            Stroke::new(0.5, col.border)
+                                        })
+                                        .rounding(Rounding::same(5.0))
+                                        .min_size(Vec2::new(0.0, 28.0)),
+                                    )
+                                    .clicked()
+                                {
                                     self.search.mode = mode;
                                     self.search.find_all(&self.filtered, &self.all_lines);
                                 }
                             }
                         });
-
-                        ui.add_space(16.0);
-
+    
+                        ui.add_space(14.0);
+    
+                        // ── Action buttons ───────────────────────────────────
                         ui.horizontal(|ui| {
-                            ui.spacing_mut().item_spacing.x = 8.0;
+                            ui.spacing_mut().item_spacing.x = 7.0;
                             let has_m = !self.search.matches.is_empty();
-
-                            if ui.add(
-                                Button::new(RichText::new("▶  Find Next").strong()
-                                    .color(col.bg_base).font(FontId::proportional(12.0)))
-                                    .fill(col.accent).stroke(Stroke::NONE)
-                                    .rounding(Rounding::same(7.0)).min_size(Vec2::new(110.0, 32.0))
-                            ).clicked() || enter_pressed {
+    
+                            // Primary: Find Next
+                            if ui
+                                .add(
+                                    Button::new(
+                                        RichText::new("▶  Next")
+                                            .strong()
+                                            .color(col.bg_base)
+                                            .font(FontId::proportional(12.0)),
+                                    )
+                                    .fill(col.accent)
+                                    .stroke(Stroke::NONE)
+                                    .rounding(Rounding::same(7.0))
+                                    .min_size(Vec2::new(88.0, 32.0)),
+                                )
+                                .clicked()
+                            {
                                 self.do_find_next();
                             }
-
-                            if ui.add_enabled(has_m,
-                                Button::new(RichText::new("◀  Prev").color(col.text).font(FontId::proportional(12.0)))
-                                    .fill(col.bg_input).stroke(Stroke::new(1.0, col.border_hl))
-                                    .rounding(Rounding::same(7.0)).min_size(Vec2::new(80.0, 32.0))
-                            ).clicked() { self.do_find_prev(); }
-
-                            if ui.add(
-                                Button::new(RichText::new("☰  Find All").color(col.accent).font(FontId::proportional(12.0)))
-                                    .fill(Color32::from_rgba_unmultiplied(col.accent.r(),col.accent.g(),col.accent.b(),18))
-                                    .stroke(Stroke::new(1.0, Color32::from_rgba_unmultiplied(col.accent.r(),col.accent.g(),col.accent.b(),80)))
-                                    .rounding(Rounding::same(7.0)).min_size(Vec2::new(80.0, 32.0))
-                            ).clicked() { self.do_find_all_with_results(); }
-
+    
+                            if ui
+                                .add_enabled(
+                                    has_m,
+                                    Button::new(
+                                        RichText::new("◀  Prev")
+                                            .color(col.text)
+                                            .font(FontId::proportional(12.0)),
+                                    )
+                                    .fill(if self.dark_mode {
+                                        Color32::from_rgba_unmultiplied(40, 50, 68, 200)
+                                    } else {
+                                        Color32::from_rgba_unmultiplied(200, 210, 235, 220)
+                                    })
+                                    .stroke(Stroke::new(1.0, col.border_hl))
+                                    .rounding(Rounding::same(7.0))
+                                    .min_size(Vec2::new(76.0, 32.0)),
+                                )
+                                .clicked()
+                            {
+                                self.do_find_prev();
+                            }
+    
+                            if ui
+                                .add(
+                                    Button::new(
+                                        RichText::new("☰  All")
+                                            .color(col.accent)
+                                            .font(FontId::proportional(12.0)),
+                                    )
+                                    .fill(Color32::from_rgba_unmultiplied(
+                                        col.accent.r(), col.accent.g(), col.accent.b(), 18,
+                                    ))
+                                    .stroke(Stroke::new(
+                                        1.0,
+                                        Color32::from_rgba_unmultiplied(
+                                            col.accent.r(), col.accent.g(), col.accent.b(), 80,
+                                        ),
+                                    ))
+                                    .rounding(Rounding::same(7.0))
+                                    .min_size(Vec2::new(64.0, 32.0)),
+                                )
+                                .clicked()
+                            {
+                                self.do_find_all_with_results();
+                            }
+    
+                            // No-match hint inline
+                            if !self.search.find_what.is_empty() && self.search.matches.is_empty() {
+                                ui.add_space(6.0);
+                                ui.label(
+                                    RichText::new("✗ no matches")
+                                        .font(FontId::proportional(11.0))
+                                        .color(Color32::from_rgb(255, 100, 90)),
+                                );
+                            }
+    
                             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                if ui.add(
-                                    Button::new(RichText::new("Close").color(col.muted).font(FontId::proportional(11.5)))
-                                        .fill(Color32::TRANSPARENT).stroke(Stroke::new(0.5, col.border))
-                                        .rounding(Rounding::same(7.0)).min_size(Vec2::new(60.0, 32.0))
-                                ).clicked() { close_req = true; }
+                                if ui
+                                    .add(
+                                        Button::new(
+                                            RichText::new("Close")
+                                                .color(col.faint)
+                                                .font(FontId::proportional(11.0)),
+                                        )
+                                        .fill(Color32::TRANSPARENT)
+                                        .stroke(Stroke::NONE)
+                                        .min_size(Vec2::new(0.0, 32.0)),
+                                    )
+                                    .clicked()
+                                {
+                                    close_req = true;
+                                }
                             });
                         });
-
-                        if !self.search.find_what.is_empty() && self.search.matches.is_empty() {
-                            ui.add_space(10.0);
-                            egui::Frame::none()
-                                .fill(Color32::from_rgba_unmultiplied(200,60,50,18))
-                                .rounding(Rounding::same(6.0))
-                                .inner_margin(egui::Margin::symmetric(12.0, 7.0))
-                                .show(ui, |ui| {
-                                    ui.label(RichText::new("✗  No matches in current view")
-                                        .font(FontId::proportional(11.5))
-                                        .color(Color32::from_rgb(255,110,100)));
-                                });
-                        }
                     });
             });
-
-        if close_req { self.find_dialog_open = false; }
+    
+        if close_req {
+            self.find_dialog_open = false;
+        }
     }
-
     fn render_results_panel(&mut self, ctx: &egui::Context, col: &Colors) {
         if !self.search.results_panel_open || self.search.matches.is_empty() { return; }
 
