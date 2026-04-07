@@ -828,126 +828,78 @@ impl App for LogViewerApp {
                     });
                 });
             });
+
         // ════════════════════════════════════════════════════════════════════
-        // TOOLBAR — Unified 35px height, clean and artistic
+        // TOOLBAR
         // ════════════════════════════════════════════════════════════════════
         egui::TopBottomPanel::top("toolbar")
-            .exact_height(35.0)  // Reduced from 50 to 35
+            .exact_height(50.0)
             .frame(egui::Frame::none()
                 .fill(col.bg_panel)
                 .stroke(Stroke::new(1.0, col.border))
-                .inner_margin(egui::Margin { left: 10.0, right: 10.0, top: 0.0, bottom: 0.0 }))
+                .inner_margin(egui::Margin { left: 12.0, right: 12.0, top: 0.0, bottom: 0.0 }))
             .show(ctx, |ui| {
+                ui.add_space(10.0);
                 ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing.x = 6.0;
-                    
-                    const TOOLBAR_HEIGHT: f32 = 28.0;  // All elements use this height
-                    
-                    // ── File & Help merged menu button ──────────────────────────────
-                    ui.menu_button(
-                        RichText::new("☰  Menu").font(FontId::proportional(11.5)).color(col.text),
-                        |ui| {
-                            ui.set_min_width(180.0);
-                            ui.spacing_mut().item_spacing.y = 2.0;
-                            
-                            ui.label(RichText::new("FILE").font(FontId::monospace(9.0)).color(col.faint));
-                            if ui.button("📂  Open…  Ctrl+O").clicked() { self.open_file_dialog(); ui.close_menu(); }
-                            if ui.button("🔄  Reload").clicked() {
-                                if let Some(p) = self.current_file.clone() { self.load_file(&p); } ui.close_menu();
-                            }
-                            ui.separator();
-                            ui.add_enabled_ui(!self.all_lines.is_empty(), |ui| {
-                                if ui.button("💾  Export Filtered…").clicked() { self.export_filtered(); ui.close_menu(); }
-                                if ui.button("📋  Export Search Results…").clicked() { self.export_search_results(); ui.close_menu(); }
-                            });
-                            ui.separator();
-                            if ui.button("🗑  Clear").clicked() { self.clear_file(); ui.close_menu(); }
-                            ui.separator();
-                            if ui.button("✕  Exit  Alt+F4").clicked() { ctx.send_viewport_cmd(egui::ViewportCommand::Close); }
-                            
-                            ui.add_space(8.0);
-                            ui.label(RichText::new("HELP").font(FontId::monospace(9.0)).color(col.faint));
-                            ui.add_space(4.0);
-                            for (k, v) in [
-                                ("Ctrl+O", "Open file"),
-                                ("Ctrl+F", "Find dialog"),
-                                ("F3", "Find next"),
-                                ("Shift+F3", "Find previous"),
-                                ("Ctrl+N", "Navigation panel"),
-                                ("Ctrl+B", "Toggle bookmark"),
-                                ("Ctrl+W", "Toggle line wrap"),
-                                ("Esc", "Close / clear"),
-                            ] {
-                                ui.horizontal(|ui| {
-                                    ui.add_sized([80.0, 20.0], egui::Label::new(
-                                        RichText::new(k).font(FontId::monospace(9.5)).color(col.accent)));
-                                    ui.label(RichText::new(v).font(FontId::proportional(10.5)).color(col.text));
-                                });
-                            }
-                        }
-                    );
-                    
-                    ui.add(egui::Separator::default().vertical().spacing(4.0));
-                    
-                    // ── Filter input ────────────────────────────────────────────────
+                    ui.spacing_mut().item_spacing.x = 8.0;
+
                     let filter_active = !self.filter_text.is_empty();
                     let te = ui.add(
                         TextEdit::singleline(&mut self.filter_text)
                             .id(egui::Id::new("toolbar_filter"))
-                            .hint_text(RichText::new("🔍 Filter…").color(col.faint))
-                            .desired_width(160.0)
-                            .font(FontId::monospace(11.0))
-                            .frame(true)
+                            .hint_text(RichText::new("🔍  Filter log…").color(col.faint))
+                            .desired_width(200.0)
+                            .font(FontId::monospace(12.5))
+                            .frame(true),
                     );
                     if te.changed() { self.apply_filters(); }
-        
+
                     if filter_active {
                         if ui.add(
-                            Button::new(RichText::new("✕").color(col.muted).font(FontId::proportional(9.0)))
+                            Button::new(RichText::new("X").color(col.muted).font(FontId::proportional(11.0)))
                                 .fill(Color32::TRANSPARENT)
                                 .stroke(Stroke::NONE)
-                                .min_size(Vec2::new(18.0, TOOLBAR_HEIGHT))
-                        ).on_hover_text("Clear").clicked() {
+                                .min_size(Vec2::new(20.0, 28.0))
+                        ).on_hover_text("Clear filter").clicked() {
                             self.filter_text.clear();
                             self.apply_filters();
                         }
                     }
-        
-                    // ── Module filter ───────────────────────────────────────────────
+
                     if !self.modules.is_empty() {
-                        let lbl = if self.module_filter.is_empty() { "All".to_string() }
-                            else if self.module_filter.len() > 12
-                                { format!("…{}", &self.module_filter[self.module_filter.len()-10..]) }
+                        ui.add(egui::Separator::default().vertical().spacing(4.0));
+                        let lbl = if self.module_filter.is_empty() { "All modules".to_string() }
+                            else if self.module_filter.len() > 18
+                                { format!("…{}", &self.module_filter[self.module_filter.len()-16..]) }
                             else { self.module_filter.clone() };
                         let mut changed = false;
                         egui::ComboBox::from_id_source("mod_cb")
-                            .selected_text(RichText::new(lbl).font(FontId::proportional(10.5)).color(col.text))
-                            .width(90.0)
+                            .selected_text(RichText::new(lbl).font(FontId::proportional(11.5)).color(col.text))
+                            .width(148.0)
                             .show_ui(ui, |ui| {
                                 if ui.selectable_label(self.module_filter.is_empty(),
-                                    RichText::new("All modules").color(col.muted).font(FontId::proportional(10.5))).clicked() {
+                                    RichText::new("All modules").color(col.muted).font(FontId::proportional(11.5))).clicked() {
                                     self.module_filter.clear(); changed = true;
                                 }
                                 for m in self.modules.clone() {
-                                    let d = if m.len() > 20 { format!("…{}", &m[m.len()-18..]) } else { m.clone() };
+                                    let d = if m.len() > 26 { format!("…{}", &m[m.len()-24..]) } else { m.clone() };
                                     if ui.selectable_label(self.module_filter == m,
-                                        RichText::new(d).font(FontId::proportional(10.5))).clicked() {
+                                        RichText::new(d).font(FontId::proportional(11.5))).clicked() {
                                         self.module_filter = m; changed = true;
                                     }
                                 }
                             });
                         if changed { self.apply_filters(); }
                     }
-        
+
                     ui.add(egui::Separator::default().vertical().spacing(4.0));
-        
-                    // ── Level toggles (compact) ─────────────────────────────────────
+
                     let defs: [(usize,&str,Color32); 5] = [
-                        (0,"E",Level::Error.color()),
-                        (1,"W",Level::Warning.color()),
-                        (2,"I",Level::Info.color()),
-                        (3,"D",Level::Debug.color()),
-                        (4,"T",Level::Trace.color()),
+                        (0,"ERR",Level::Error.color()),
+                        (1,"WRN",Level::Warning.color()),
+                        (2,"INF",Level::Info.color()),
+                        (3,"DBG",Level::Debug.color()),
+                        (4,"TRC",Level::Trace.color()),
                     ];
                     let mut fc = false;
                     for (idx, lbl, lv_color) in defs {
@@ -955,136 +907,227 @@ impl App for LogViewerApp {
                         let (fg, bg, stroke) = if active {
                             (lv_color,
                              Color32::from_rgba_unmultiplied(lv_color.r(), lv_color.g(), lv_color.b(), 22),
-                             Stroke::new(1.0, Color32::from_rgba_unmultiplied(lv_color.r(), lv_color.g(), lv_color.b(), 120)))
+                             Stroke::new(1.0, Color32::from_rgba_unmultiplied(lv_color.r(), lv_color.g(), lv_color.b(), 140)))
                         } else {
                             (col.faint, Color32::TRANSPARENT, Stroke::new(0.5, col.border))
                         };
                         if ui.add(Button::new(
-                            RichText::new(lbl).color(fg).font(FontId::monospace(10.0)).strong(),
-                        ).fill(bg).stroke(stroke).rounding(Rounding::same(5.0))
-                            .min_size(Vec2::new(28.0, TOOLBAR_HEIGHT))
-                        ).on_hover_text(format!("{} ({})", 
-                            match idx { 0=>"Error",1=>"Warning",2=>"Info",3=>"Debug",_=>"Trace" },
-                            self.counts[idx]
-                        )).clicked() {
-                            self.show[idx] = !self.show[idx]; 
-                            fc = true;
-                        }
+                            RichText::new(format!("{} {}", lbl, self.counts[idx]))
+                                .color(fg).font(FontId::monospace(11.0)).strong(),
+                        ).fill(bg).stroke(stroke).rounding(Rounding::same(6.0))
+                            .min_size(Vec2::new(0.0, 28.0))).clicked()
+                        { self.show[idx] = !self.show[idx]; fc = true; }
                     }
                     if fc { self.apply_filters(); }
-        
-                    // ── Right side controls ─────────────────────────────────────────
+
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        ui.spacing_mut().item_spacing.x = 4.0;
-                        
-                        // Theme toggle
+                        ui.spacing_mut().item_spacing.x = 6.0;
+
                         let theme_icon = if self.dark_mode { "☀" } else { "🌙" };
+                        let theme_tip  = if self.dark_mode { "Switch to light mode" } else { "Switch to dark mode" };
                         if ui.add(
-                            Button::new(RichText::new(theme_icon).color(col.muted).font(FontId::proportional(12.0)))
+                            Button::new(RichText::new(theme_icon).color(col.muted).font(FontId::proportional(14.0)))
                                 .fill(col.bg_input)
                                 .stroke(Stroke::new(0.5, col.border))
-                                .rounding(Rounding::same(5.0))
-                                .min_size(Vec2::new(TOOLBAR_HEIGHT, TOOLBAR_HEIGHT))
-                        ).on_hover_text(if self.dark_mode { "Light mode" } else { "Dark mode" }).clicked() {
+                                .rounding(Rounding::same(7.0))
+                                .min_size(Vec2::new(32.0, 30.0))
+                        ).on_hover_text(theme_tip).clicked() {
                             self.dark_mode = !self.dark_mode;
                         }
-        
-                        // Font size
-                        if ui.add(
-                            Button::new(RichText::new("A+").color(col.muted).font(FontId::proportional(10.0)))
-                                .fill(col.bg_input)
-                                .stroke(Stroke::new(0.5, col.border))
-                                .rounding(Rounding::same(5.0))
-                                .min_size(Vec2::new(28.0, TOOLBAR_HEIGHT))
-                        ).on_hover_text("Larger font").clicked() {
-                            self.font_size = (self.font_size + 1.0).min(20.0);
-                            self.row_height = self.font_size + 8.0;
-                        }
-                        if ui.add(
-                            Button::new(RichText::new("A-").color(col.muted).font(FontId::proportional(10.0)))
-                                .fill(col.bg_input)
-                                .stroke(Stroke::new(0.5, col.border))
-                                .rounding(Rounding::same(5.0))
-                                .min_size(Vec2::new(28.0, TOOLBAR_HEIGHT))
-                        ).on_hover_text("Smaller font").clicked() {
-                            self.font_size = (self.font_size - 1.0).max(9.0);
-                            self.row_height = self.font_size + 8.0;
-                        }
-        
+
                         ui.add(egui::Separator::default().vertical().spacing(4.0));
-        
-                        // Nav & Wrap
+
+                        for (icon, delta, tip) in [("A+", 1.0_f32, "Larger font"), ("A-", -1.0, "Smaller font")] {
+                            if ui.add(
+                                Button::new(RichText::new(icon).color(col.muted).font(FontId::proportional(12.0)))
+                                    .fill(col.bg_input)
+                                    .stroke(Stroke::new(0.5, col.border))
+                                    .rounding(Rounding::same(7.0))
+                                    .min_size(Vec2::new(32.0, 30.0))
+                            ).on_hover_text(tip).clicked() {
+                                self.font_size = (self.font_size + delta).clamp(9.0, 20.0);
+                                self.row_height = self.font_size + 8.0;
+                            }
+                        }
+
+                        ui.add(egui::Separator::default().vertical().spacing(4.0));
+
                         let nav_active = self.nav_open;
-                        let nav_cnt = self.nav_entries.len();
-                        let nav_text = if nav_cnt > 0 { format!("N{}", nav_cnt) } else { "N".to_string() };
+                        let nav_lbl = if !self.nav_entries.is_empty()
+                            { format!("Nav  {}", self.nav_entries.len()) } else { "Nav".into() };
                         if ui.add(
-                            Button::new(RichText::new(&nav_text)
+                            Button::new(RichText::new(nav_lbl)
                                 .color(if nav_active { col.accent } else { col.muted })
-                                .font(FontId::monospace(10.0)))
+                                .font(FontId::proportional(11.5)))
                                 .fill(if nav_active {
-                                    Color32::from_rgba_unmultiplied(col.accent.r(), col.accent.g(), col.accent.b(), 18)
+                                    Color32::from_rgba_unmultiplied(col.accent.r(), col.accent.g(), col.accent.b(), 22)
                                 } else { col.bg_input })
-                                .stroke(Stroke::new(0.5, if nav_active {
-                                    Color32::from_rgba_unmultiplied(col.accent.r(), col.accent.g(), col.accent.b(), 100)
-                                } else { col.border }))
-                                .rounding(Rounding::same(5.0))
-                                .min_size(Vec2::new(32.0, TOOLBAR_HEIGHT))
-                        ).on_hover_text("Navigation  Ctrl+N").clicked() {
+                                .stroke(Stroke::new(if nav_active { 1.0 } else { 0.5 },
+                                    if nav_active {
+                                        Color32::from_rgba_unmultiplied(col.accent.r(), col.accent.g(), col.accent.b(), 140)
+                                    } else { col.border }))
+                                .rounding(Rounding::same(7.0))
+                                .min_size(Vec2::new(0.0, 30.0))
+                        ).on_hover_text("Navigation panel  Ctrl+N").clicked() {
                             self.nav_open = !self.nav_open;
                         }
-        
+
                         let wrap_active = self.wrap_lines;
                         if ui.add(
-                            Button::new(RichText::new(if wrap_active { "↩" } else { "→" })
+                            Button::new(RichText::new(if wrap_active { "↩ Wrap" } else { "→ Wrap" })
                                 .color(if wrap_active { col.accent } else { col.muted })
-                                .font(FontId::proportional(11.0)))
+                                .font(FontId::proportional(11.5)))
                                 .fill(col.bg_input)
                                 .stroke(Stroke::new(0.5, if wrap_active {
                                     Color32::from_rgba_unmultiplied(col.accent.r(), col.accent.g(), col.accent.b(), 100)
                                 } else { col.border }))
-                                .rounding(Rounding::same(5.0))
-                                .min_size(Vec2::new(TOOLBAR_HEIGHT, TOOLBAR_HEIGHT))
-                        ).on_hover_text("Line wrap  Ctrl+W").clicked() {
+                                .rounding(Rounding::same(7.0))
+                                .min_size(Vec2::new(0.0, 30.0))
+                        ).on_hover_text("Toggle line wrap  Ctrl+W").clicked() {
                             self.wrap_lines = !self.wrap_lines;
                         }
-        
+
                         ui.add(egui::Separator::default().vertical().spacing(4.0));
-        
-                        // Open / Clear buttons
+
                         if self.all_lines.is_empty() {
                             if ui.add(
-                                Button::new(RichText::new("Open")
-                                    .color(col.bg_base).font(FontId::proportional(10.0)).strong())
+                                Button::new(RichText::new("📂  Open File")
+                                    .strong().color(col.bg_base).font(FontId::proportional(12.0)))
                                     .fill(col.accent)
                                     .stroke(Stroke::NONE)
-                                    .rounding(Rounding::same(5.0))
-                                    .min_size(Vec2::new(45.0, TOOLBAR_HEIGHT))
-                            ).on_hover_text("Open file  Ctrl+O").clicked() {
-                                self.open_file_dialog();
-                            }
+                                    .rounding(Rounding::same(7.0))
+                                    .min_size(Vec2::new(0.0, 30.0))
+                            ).clicked() { self.open_file_dialog(); }
                         } else {
                             if ui.add(
-                                Button::new(RichText::new("Open").color(col.text).font(FontId::proportional(10.0)))
+                                Button::new(RichText::new("📂  Open")
+                                    .color(col.text).font(FontId::proportional(11.5)))
                                     .fill(col.bg_input)
                                     .stroke(Stroke::new(0.5, col.border))
-                                    .rounding(Rounding::same(5.0))
-                                    .min_size(Vec2::new(40.0, TOOLBAR_HEIGHT))
-                            ).on_hover_text("Open file  Ctrl+O").clicked() {
-                                self.open_file_dialog();
-                            }
+                                    .rounding(Rounding::same(7.0))
+                                    .min_size(Vec2::new(0.0, 30.0))
+                            ).clicked() { self.open_file_dialog(); }
+
                             if ui.add(
-                                Button::new(RichText::new("Clear").color(col.muted).font(FontId::proportional(10.0)))
+                                Button::new(RichText::new("🗑  Clear")
+                                    .color(col.muted).font(FontId::proportional(11.5)))
                                     .fill(col.bg_input)
                                     .stroke(Stroke::new(0.5, col.border))
-                                    .rounding(Rounding::same(5.0))
-                                    .min_size(Vec2::new(40.0, TOOLBAR_HEIGHT))
-                            ).on_hover_text("Clear all").clicked() {
-                                self.clear_file();
-                            }
+                                    .rounding(Rounding::same(7.0))
+                                    .min_size(Vec2::new(0.0, 30.0))
+                            ).clicked() { self.clear_file(); }
                         }
                     });
                 });
             });
+
+        // FIND DIALOG
+        self.render_find_dialog(ctx, &col);
+
+        // STATUS BAR
+        egui::TopBottomPanel::bottom("statusbar")
+            .exact_height(26.0)
+            .frame(egui::Frame::none()
+                .fill(col.bg_panel)
+                .stroke(Stroke::new(1.0, col.border))
+                .inner_margin(egui::Margin::symmetric(14.0, 0.0)))
+            .show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 14.0;
+                    let mk = |n: usize, s: &str, c: Color32|
+                        RichText::new(format!("{} {}", n, s)).color(c).font(FontId::monospace(10.5));
+                    ui.label(mk(self.counts[0],"errors",   Level::Error.color()));
+                    ui.label(mk(self.counts[1],"warnings", Level::Warning.color()));
+                    ui.label(mk(self.counts[2],"info",     Level::Info.color()));
+                    ui.label(mk(self.counts[3],"debug",    Level::Debug.color()));
+                    ui.label(mk(self.counts[4],"trace",    Level::Trace.color()));
+                    if !self.search.matches.is_empty() {
+                        ui.add(egui::Separator::default().vertical().spacing(6.0));
+                        ui.label(RichText::new(format!("Match {}/{}",
+                            self.search.current_match_idx+1, self.search.matches.len()))
+                            .color(col.accent).font(FontId::monospace(10.5)));
+                    }
+                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        ui.label(RichText::new(format!("{} / {} lines",
+                            self.filtered.len(), self.all_lines.len()))
+                            .color(col.faint).font(FontId::monospace(10.5)));
+                        ui.add(egui::Separator::default().vertical().spacing(6.0));
+                        ui.label(RichText::new(&self.status).color(col.muted).font(FontId::monospace(10.5)));
+                    });
+                });
+            });
+
+        // DETAIL PANEL
+        if self.detail_open {
+            let sel: Option<LogLine> = self.selected
+                .and_then(|r| self.filtered.get(r).copied())
+                .and_then(|li| self.all_lines.get(li)).cloned();
+            if let Some(line) = sel {
+                let detail_bg = if self.dark_mode { Color32::from_rgb(11, 15, 22) } else { col.bg_input };
+                egui::TopBottomPanel::bottom("detail_panel")
+                    .resizable(true).default_height(155.0).min_height(80.0)
+                    .frame(egui::Frame::none()
+                        .fill(detail_bg)
+                        .stroke(Stroke::new(1.0, col.border))
+                        .inner_margin(egui::Margin::symmetric(14.0, 10.0)))
+                    .show(ctx, |ui| {
+                        ui.horizontal(|ui| {
+                            ui.label(RichText::new("LINE DETAIL")
+                                .font(FontId::monospace(9.5)).color(col.faint).strong());
+                            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                                ui.spacing_mut().item_spacing.x = 6.0;
+                                let mut close = false;
+                                if premium_close_button(ui, &col).clicked() { close = true; }
+
+                                let is_bm = self.is_bookmarked(self.selected.unwrap_or(0));
+                                if ui.add(
+                                    Button::new(RichText::new(if is_bm { "♥ Bookmarked" } else { "♡ Bookmark" })
+                                        .color(if is_bm { Color32::from_rgb(255,140,200) } else { col.muted })
+                                        .font(FontId::proportional(11.0)))
+                                        .fill(col.bg_input)
+                                        .stroke(Stroke::new(0.5, col.border))
+                                        .rounding(Rounding::same(6.0)).min_size(Vec2::new(0.0, 26.0))
+                                ).on_hover_text("Ctrl+B").clicked() {
+                                    if let Some(s) = self.selected { self.toggle_bookmark(s); }
+                                }
+                                if ui.add(
+                                    Button::new(RichText::new("📋").color(col.muted).font(FontId::proportional(13.0)))
+                                        .fill(col.bg_input).stroke(Stroke::new(0.5, col.border))
+                                        .rounding(Rounding::same(6.0)).min_size(Vec2::new(30.0, 26.0))
+                                ).on_hover_text("Copy raw line").clicked() {
+                                    ui.output_mut(|o| o.copied_text = line.raw.clone());
+                                }
+                                if close { self.detail_open = false; }
+                            });
+                        });
+                        ui.add_space(4.0);
+                        ui.add(egui::Separator::default().horizontal().spacing(2.0));
+                        ui.add_space(4.0);
+                        egui::Grid::new("detail_grid").num_columns(4).spacing([20.0,4.0]).show(ui, |ui| {
+                            let lbl = |s: &str| RichText::new(s).color(col.faint).font(FontId::monospace(9.5));
+                            let val = |s: String| RichText::new(s).color(col.text).font(FontId::monospace(11.0));
+                            ui.label(lbl("LINE"));   ui.label(val(line.num.to_string()));
+                            ui.label(lbl("LEVEL"));  ui.label(RichText::new(line.level.label()).color(line.level.color()).strong().font(FontId::monospace(11.0)));
+                            ui.end_row();
+                            ui.label(lbl("TIME"));   ui.label(val(line.timestamp.clone()));
+                            ui.label(lbl("Δ TIME")); ui.label(val(line.delta_ms.map(format_delta).unwrap_or_else(||"—".into())));
+                            ui.end_row();
+                            ui.label(lbl("MODULE")); ui.label(val(line.module.clone()));
+                            ui.label(lbl("")); ui.label(val(String::new()));
+                            ui.end_row();
+                        });
+                        ui.add_space(4.0);
+                        ui.label(RichText::new("MESSAGE").color(col.faint).font(FontId::monospace(9.5)));
+                        ui.add_space(2.0);
+                        ScrollArea::vertical().id_source("detail_scroll").max_height(55.0).show(ui, |ui| {
+                            ui.label(RichText::new(&line.message).font(FontId::monospace(11.5)).color(col.text));
+                        });
+                    });
+            }
+        }
+
+        // RESULTS PANEL
+        self.render_results_panel(ctx, &col);
 
         // ════════════════════════════════════════════════════════════════════
         // MINIMAP
@@ -1809,12 +1852,12 @@ fn main() -> eframe::Result<()> {
 
     let opts = NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_title("CLogViewer")
+            .with_title("XTR Log Viewer")
             .with_inner_size([1440.0, 900.0])
             .with_min_inner_size([800.0, 400.0])
             .with_drag_and_drop(true)
             .with_icon(icon_data),
         ..Default::default()
     };
-    eframe::run_native("CLogViewer", opts, Box::new(|_cc| Box::new(LogViewerApp::default())))
+    eframe::run_native("XTR Log Viewer", opts, Box::new(|_cc| Box::new(LogViewerApp::default())))
 }
