@@ -833,13 +833,13 @@ impl App for LogViewerApp {
         // TOOLBAR
         // ════════════════════════════════════════════════════════════════════
         egui::TopBottomPanel::top("toolbar")
-            .exact_height(50.0)
+            .exact_height(42.0)
             .frame(egui::Frame::none()
                 .fill(col.bg_panel)
                 .stroke(Stroke::new(1.0, col.border))
                 .inner_margin(egui::Margin { left: 12.0, right: 12.0, top: 0.0, bottom: 0.0 }))
             .show(ctx, |ui| {
-                ui.add_space(10.0);
+                ui.add_space(8.0);
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 8.0;
 
@@ -915,7 +915,7 @@ impl App for LogViewerApp {
                             RichText::new(format!("{} {}", lbl, self.counts[idx]))
                                 .color(fg).font(FontId::monospace(11.0)).strong(),
                         ).fill(bg).stroke(stroke).rounding(Rounding::same(6.0))
-                            .min_size(Vec2::new(0.0, 28.0))).clicked()
+                            .min_size(Vec2::new(0.0, 26.0))).clicked()
                         { self.show[idx] = !self.show[idx]; fc = true; }
                     }
                     if fc { self.apply_filters(); }
@@ -930,7 +930,7 @@ impl App for LogViewerApp {
                                 .fill(col.bg_input)
                                 .stroke(Stroke::new(0.5, col.border))
                                 .rounding(Rounding::same(7.0))
-                                .min_size(Vec2::new(32.0, 30.0))
+                                .min_size(Vec2::new(32.0, 26.0))
                         ).on_hover_text(theme_tip).clicked() {
                             self.dark_mode = !self.dark_mode;
                         }
@@ -943,7 +943,7 @@ impl App for LogViewerApp {
                                     .fill(col.bg_input)
                                     .stroke(Stroke::new(0.5, col.border))
                                     .rounding(Rounding::same(7.0))
-                                    .min_size(Vec2::new(32.0, 30.0))
+                                    .min_size(Vec2::new(32.0, 26.0))
                             ).on_hover_text(tip).clicked() {
                                 self.font_size = (self.font_size + delta).clamp(9.0, 20.0);
                                 self.row_height = self.font_size + 8.0;
@@ -967,7 +967,7 @@ impl App for LogViewerApp {
                                         Color32::from_rgba_unmultiplied(col.accent.r(), col.accent.g(), col.accent.b(), 140)
                                     } else { col.border }))
                                 .rounding(Rounding::same(7.0))
-                                .min_size(Vec2::new(0.0, 30.0))
+                                .min_size(Vec2::new(0.0, 26.0))
                         ).on_hover_text("Navigation panel  Ctrl+N").clicked() {
                             self.nav_open = !self.nav_open;
                         }
@@ -982,7 +982,7 @@ impl App for LogViewerApp {
                                     Color32::from_rgba_unmultiplied(col.accent.r(), col.accent.g(), col.accent.b(), 100)
                                 } else { col.border }))
                                 .rounding(Rounding::same(7.0))
-                                .min_size(Vec2::new(0.0, 30.0))
+                                .min_size(Vec2::new(0.0, 26.0))
                         ).on_hover_text("Toggle line wrap  Ctrl+W").clicked() {
                             self.wrap_lines = !self.wrap_lines;
                         }
@@ -996,7 +996,7 @@ impl App for LogViewerApp {
                                     .fill(col.accent)
                                     .stroke(Stroke::NONE)
                                     .rounding(Rounding::same(7.0))
-                                    .min_size(Vec2::new(0.0, 30.0))
+                                    .min_size(Vec2::new(0.0, 26.0))
                             ).clicked() { self.open_file_dialog(); }
                         } else {
                             if ui.add(
@@ -1005,7 +1005,7 @@ impl App for LogViewerApp {
                                     .fill(col.bg_input)
                                     .stroke(Stroke::new(0.5, col.border))
                                     .rounding(Rounding::same(7.0))
-                                    .min_size(Vec2::new(0.0, 30.0))
+                                    .min_size(Vec2::new(0.0, 26.0))
                             ).clicked() { self.open_file_dialog(); }
 
                             if ui.add(
@@ -1014,7 +1014,7 @@ impl App for LogViewerApp {
                                     .fill(col.bg_input)
                                     .stroke(Stroke::new(0.5, col.border))
                                     .rounding(Rounding::same(7.0))
-                                    .min_size(Vec2::new(0.0, 30.0))
+                                    .min_size(Vec2::new(0.0, 26.0))
                             ).clicked() { self.clear_file(); }
                         }
                     });
