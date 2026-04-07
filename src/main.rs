@@ -58,6 +58,8 @@ struct Colors {
     bg_input:     Color32,
     bg_row_hover: Color32,
     bg_row_sel:   Color32,
+    bg_toolbar:   Color32,
+    bg_search:    Color32,
     border:       Color32,
     border_hl:    Color32,
     text:         Color32,
@@ -72,10 +74,12 @@ impl Colors {
     fn dark() -> Self {
         Self {
             bg_base:      Color32::from_rgb(13,  17,  23),
-            bg_panel:     Color32::from_rgb(28, 34, 46),
+            bg_panel:     Color32::from_rgb(28,  34,  46),
             bg_input:     Color32::from_rgb(10,  13,  20),
             bg_row_hover: Color32::from_rgba_premultiplied(255,255,255,10),
             bg_row_sel:   Color32::from_rgba_premultiplied(88,166,255,45),
+            bg_toolbar:   Color32::from_rgb(18,  22,  32),
+            bg_search:    Color32::from_rgb(32,  38,  52),
             border:       Color32::from_rgb(36,  42,  52),
             border_hl:    Color32::from_rgb(58,  68,  84),
             text:         Color32::from_rgb(215, 222, 232),
@@ -93,6 +97,8 @@ impl Colors {
             bg_input:     Color32::from_rgb(255, 255, 255),
             bg_row_hover: Color32::from_rgba_premultiplied(0, 0, 0, 12),
             bg_row_sel:   Color32::from_rgba_premultiplied(30,100,220,40),
+            bg_toolbar:   Color32::from_rgb(228, 234, 248),
+            bg_search:    Color32::from_rgb(255, 255, 255),
             border:       Color32::from_rgb(200, 210, 225),
             border_hl:    Color32::from_rgb(150, 170, 200),
             text:         Color32::from_rgb(20,  30,  50),
@@ -134,8 +140,6 @@ impl Colors {
 }
 
 // ─── Premium Close Button Helper ─────────────────────────────────────────────
-// FIX 1: removed dead second branch — is_hovering and response.hovered() are
-//         the same value, so the `else if response.hovered()` arm was unreachable.
 
 fn premium_close_button(ui: &mut egui::Ui, col: &Colors) -> egui::Response {
     let size = Vec2::splat(28.0);
@@ -155,7 +159,6 @@ fn premium_close_button(ui: &mut egui::Ui, col: &Colors) -> egui::Response {
         Stroke::NONE
     };
 
-    // Two states only: white on hover, muted otherwise.
     let text_color = if is_hovering { Color32::WHITE } else { col.muted };
 
     ui.painter().rect(rect, Rounding::same(6.0), bg_color, border);
@@ -842,7 +845,7 @@ impl App for LogViewerApp {
         egui::TopBottomPanel::top("toolbar")
             .exact_height(42.0)
             .frame(egui::Frame::none()
-                .fill(col.bg_panel)
+                .fill(col.bg_toolbar)
                 .stroke(Stroke::new(1.0, col.border))
                 .inner_margin(egui::Margin { left: 12.0, right: 12.0, top: 0.0, bottom: 0.0 }))
             .show(ctx, |ui| {
@@ -851,55 +854,50 @@ impl App for LogViewerApp {
                     ui.spacing_mut().item_spacing.x = 8.0;
 
                     let filter_active = !self.filter_text.is_empty();
-                    let search_bar_bg = if self.dark_mode {
-                        Color32::from_rgb(22, 27, 38)
-                    } else {
-                        Color32::from_rgb(255, 255, 255)
-                    };
                     let search_bar_border = if filter_active {
                         Color32::from_rgba_unmultiplied(col.accent.r(), col.accent.g(), col.accent.b(), 120)
                     } else {
-                        col.border
+                        col.border_hl
                     };
                     
                     let bar_resp = egui::Frame::none()
-                        .fill(search_bar_bg)
+                        .fill(col.bg_search)
                         .stroke(Stroke::new(1.0, search_bar_border))
-                        .rounding(Rounding::same(5.0))
-                        .inner_margin(egui::Margin { left: 8.0, right: 4.0, top: 0.0, bottom: 0.0 })
+                        .rounding(Rounding::same(6.0))
+                        .inner_margin(egui::Margin { left: 10.0, right: 6.0, top: 0.0, bottom: 0.0 })
                         .show(ui, |ui| {
                             ui.set_height(26.0);
                             ui.horizontal(|ui| {
-                                ui.spacing_mut().item_spacing.x = 5.0;
+                                ui.spacing_mut().item_spacing.x = 6.0;
                     
-                                // Search icon — dims when empty, accents when active
+                                // Search icon only
                                 ui.label(
                                     RichText::new("⌕")
                                         .font(FontId::proportional(16.0))
-                                        .color(if filter_active { col.accent } else { col.faint }),
+                                        .color(if filter_active { col.accent } else { col.muted }),
                                 );
                     
                                 let te = ui.add(
                                     TextEdit::singleline(&mut self.filter_text)
                                         .id(egui::Id::new("toolbar_filter"))
-                                        .hint_text(RichText::new("Filter…").color(col.faint))
+                                        .hint_text("")
                                         .desired_width(168.0)
                                         .font(FontId::proportional(12.5))
                                         .frame(false),
                                 );
                                 if te.changed() { self.apply_filters(); }
                     
-                                // Inline ✕ only when there's text — flush right inside bar
+                                // Inline ✕ only when there's text
                                 if filter_active {
                                     if ui.add(
                                         Button::new(
                                             RichText::new("✕")
                                                 .font(FontId::proportional(10.5))
-                                                .color(col.faint),
+                                                .color(col.muted),
                                         )
                                         .fill(Color32::TRANSPARENT)
                                         .stroke(Stroke::NONE)
-                                        .min_size(Vec2::new(20.0, 20.0)),
+                                        .min_size(Vec2::new(22.0, 22.0)),
                                     )
                                     .on_hover_text("Clear  Esc")
                                     .clicked()
@@ -1306,7 +1304,6 @@ impl App for LogViewerApp {
                         ui.add_space(5.0);
                         ui.horizontal(|ui| {
                             ui.label(RichText::new("Keyword:").font(FontId::monospace(9.5)).color(col.faint));
-                            // FIX 6: trigger on Enter key in addition to focus-lost
                             let kr = ui.add(TextEdit::singleline(&mut new_kw)
                                 .hint_text("any text").desired_width(f32::INFINITY)
                                 .font(FontId::monospace(10.5)));
@@ -1385,7 +1382,6 @@ impl App for LogViewerApp {
             .frame(egui::Frame::none().fill(col.bg_base))
             .show(ctx, |ui| {
 
-                // FIX 7: drag-hover overlay — paint over loaded content too, not just empty state
                 if self.drag_hover {
                     let screen = ui.max_rect();
                     let overlay_painter = ui.painter();
@@ -1463,8 +1459,6 @@ impl App for LogViewerApp {
                     sa = sa.scroll_offset(Vec2::new(0.0, off));
                 }
 
-                // FIX 4: build O(1) lookup sets once before the row loop instead of
-                //         scanning the matches Vec linearly for every visible row.
                 let find_match_rows: std::collections::HashSet<usize> =
                     self.search.matches.iter().map(|m| m.row_idx).collect();
                 let cur_find_row = self.search.matches
@@ -1558,8 +1552,6 @@ impl App for LogViewerApp {
                             else { msg.clone() };
                         p.text(egui::pos2(x, y), Align2::LEFT_CENTER, msg_disp, fid.clone(), msg_col);
 
-                        // FIX 5: double-click must not also fire the single-click handler.
-                        //         Use else-if so only one branch runs per interaction.
                         if resp.double_clicked() {
                             self.toggle_bookmark(row_idx);
                             self.selected = Some(row_idx);
@@ -1585,7 +1577,6 @@ impl LogViewerApp {
     
         let mut close_req = false;
     
-        // Translucent frosted-glass frame
         let panel_fill = if self.dark_mode {
             Color32::from_rgba_unmultiplied(16, 20, 30, 210)
         } else {
@@ -1599,7 +1590,7 @@ impl LogViewerApp {
     
         Window::new("find_dlg_w")
             .id(egui::Id::new("find_dlg"))
-            .default_pos(egui::pos2(80.0, 88.0))   // remembers drag position
+            .default_pos(egui::pos2(80.0, 88.0))
             .fixed_size([420.0, 230.0])
             .collapsible(false)
             .resizable(false)
@@ -1619,7 +1610,6 @@ impl LogViewerApp {
             .show(ctx, |ui| {
                 ui.spacing_mut().item_spacing = Vec2::ZERO;
     
-                // ── Drag handle / title bar ──────────────────────────────────
                 let hdr_fill = if self.dark_mode {
                     Color32::from_rgba_unmultiplied(22, 28, 42, 230)
                 } else {
@@ -1634,7 +1624,6 @@ impl LogViewerApp {
                         ui.horizontal(|ui| {
                             ui.set_min_height(26.0);
     
-                            // Grab icon hint
                             ui.label(
                                 RichText::new("⠿")
                                     .font(FontId::proportional(13.0))
@@ -1680,13 +1669,9 @@ impl LogViewerApp {
                     })
                     .response;
     
-                // Make the header draggable so the whole window follows
                 if hdr_resp.interact(Sense::drag()).dragged() {
-                    // egui Window handles its own drag via the id — nothing extra needed;
-                    // keeping the interact call here ensures the cursor changes on hover.
                 }
     
-                // Thin accent divider
                 ui.painter().rect_filled(
                     egui::Rect::from_min_size(
                         ui.cursor().min,
@@ -1699,13 +1684,11 @@ impl LogViewerApp {
                 );
                 ui.add_space(1.0);
     
-                // ── Body ────────────────────────────────────────────────────
                 egui::Frame::none()
                     .inner_margin(egui::Margin { left: 18.0, right: 18.0, top: 14.0, bottom: 14.0 })
                     .show(ui, |ui| {
                         ui.spacing_mut().item_spacing.y = 0.0;
     
-                        // Search input with inline clear button
                         let input_bg = if self.dark_mode {
                             Color32::from_rgba_unmultiplied(10, 13, 22, 200)
                         } else {
@@ -1766,14 +1749,12 @@ impl LogViewerApp {
                                         }
                                     }
     
-                                    // Capture enter here (needs to be in same scope as te)
                                     if enter_pressed { self.do_find_next(); }
                                 });
                             });
     
                         ui.add_space(10.0);
     
-                        // ── Options row ──────────────────────────────────────
                         ui.horizontal(|ui| {
                             ui.spacing_mut().item_spacing.x = 4.0;
                             let mut chg = false;
@@ -1835,7 +1816,6 @@ impl LogViewerApp {
                             ui.add(egui::Separator::default().vertical().spacing(4.0));
                             ui.add_space(6.0);
     
-                            // Mode pills
                             for (mode, lbl) in [
                                 (SearchMode::Normal,   "Normal"),
                                 (SearchMode::Extended, "Ext"),
@@ -1879,12 +1859,10 @@ impl LogViewerApp {
     
                         ui.add_space(14.0);
     
-                        // ── Action buttons ───────────────────────────────────
                         ui.horizontal(|ui| {
                             ui.spacing_mut().item_spacing.x = 7.0;
                             let has_m = !self.search.matches.is_empty();
     
-                            // Primary: Find Next
                             if ui
                                 .add(
                                     Button::new(
@@ -1949,7 +1927,6 @@ impl LogViewerApp {
                                 self.do_find_all_with_results();
                             }
     
-                            // No-match hint inline
                             if !self.search.find_what.is_empty() && self.search.matches.is_empty() {
                                 ui.add_space(6.0);
                                 ui.label(
@@ -1984,6 +1961,7 @@ impl LogViewerApp {
             self.find_dialog_open = false;
         }
     }
+
     fn render_results_panel(&mut self, ctx: &egui::Context, col: &Colors) {
         if !self.search.results_panel_open || self.search.matches.is_empty() { return; }
 
@@ -1995,9 +1973,6 @@ impl LogViewerApp {
 
         egui::TopBottomPanel::bottom("results_panel")
             .resizable(true)
-            // FIX 3: removed `self.search.results_panel_height = ui.available_height()` —
-            //         that set the stored height to the pre-layout available space, which
-            //         had nothing to do with the actual panel height egui tracks internally.
             .default_height(self.search.results_panel_height)
             .height_range(100.0..=400.0)
             .frame(egui::Frame::none().fill(rp_bg).stroke(Stroke::new(1.0, col.border)))
@@ -2088,8 +2063,6 @@ impl LogViewerApp {
                             &md, FontId::monospace(10.0), col.muted); x += 80.0;
                         render_match_context(painter, egui::pos2(x, y), mat, rect.max.x-x-16.0, col);
 
-                        // FIX 5 (results panel): use else-if so double-click doesn't
-                        //         also execute the single-click branch.
                         if resp.double_clicked() {
                             self.search.current_match_idx = idx;
                             jump_to = Some(mat.row_idx);
@@ -2113,7 +2086,6 @@ impl LogViewerApp {
 // ─── main ─────────────────────────────────────────────────────────────────────
 
 fn main() -> eframe::Result<()> {
-    // Embed the ICO file directly into the binary
     let icon_data = image::load_from_memory(include_bytes!("../assets/logo.ico"))
         .ok()
         .map(|img| {
@@ -2122,12 +2094,11 @@ fn main() -> eframe::Result<()> {
             egui::IconData { rgba: rgba.into_raw(), width: w, height: h }
         })
         .unwrap_or_else(|| {
-            // Fallback: blue square (32x32) - only shows if ICO file is missing
             let size: u32 = 32;
             let pixel_count = (size * size) as usize;
             let mut rgba = Vec::with_capacity(pixel_count * 4);
             for _ in 0..pixel_count {
-                rgba.extend_from_slice(&[88, 166, 255, 255]); // R,G,B,A
+                rgba.extend_from_slice(&[88, 166, 255, 255]);
             }
             egui::IconData { rgba, width: size, height: size }
         });
