@@ -778,6 +778,15 @@ impl App for LogViewerApp {
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 2.0;
+                    ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 2.0;
+        
+                    ui.visuals_mut().widgets.inactive.bg_fill   = Color32::TRANSPARENT;
+                    ui.visuals_mut().widgets.inactive.bg_stroke = Stroke::NONE;
+                    ui.visuals_mut().widgets.hovered.bg_fill    = Color32::from_rgba_unmultiplied(255, 255, 255, 12);
+                    ui.visuals_mut().widgets.hovered.bg_stroke  = Stroke::NONE;
+                    ui.visuals_mut().widgets.active.bg_fill     = Color32::from_rgba_unmultiplied(255, 255, 255, 18);
+                    ui.visuals_mut().widgets.active.bg_stroke   = Stroke::NONE;
                     ui.add_space(8.0);
 
                     let mb = |label: &str| {
