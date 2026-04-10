@@ -79,7 +79,7 @@ impl Colors {
             bg_row_hover: Color32::from_rgba_premultiplied(255,255,255,10),
             bg_row_sel:   Color32::from_rgba_premultiplied(88,166,255,45),
             bg_toolbar:   Color32::from_rgb(18,  22,  32),
-            bg_search:    Color32::from_rgb(32,  38,  52),
+            bg_search:    Color32::from_rgb(22,  27,  38),
             border:       Color32::from_rgb(36,  42,  52),
             border_hl:    Color32::from_rgb(58,  68,  84),
             text:         Color32::from_rgb(215, 222, 232),
@@ -144,29 +144,11 @@ impl Colors {
 fn premium_close_button(ui: &mut egui::Ui, col: &Colors) -> egui::Response {
     let size = Vec2::splat(28.0);
     let (rect, response) = ui.allocate_exact_size(size, Sense::click());
-
-    let is_hovering = response.hovered();
-
-    let bg_color = if is_hovering {
-        Color32::from_rgb(220, 60, 50)
-    } else {
-        Color32::TRANSPARENT
-    };
-
-    let border = if is_hovering {
-        Stroke::new(1.5, Color32::from_rgb(240, 80, 70))
-    } else {
-        Stroke::NONE
-    };
-
-    let text_color = if is_hovering { Color32::WHITE } else { col.muted };
-
+    let bg_color = if response.hovered() { Color32::from_rgb(220, 60, 50) } else { Color32::TRANSPARENT };
+    let border = if response.hovered() { Stroke::new(1.5, Color32::from_rgb(240, 80, 70)) } else { Stroke::NONE };
+    let text_color = if response.hovered() { Color32::WHITE } else { col.muted };
     ui.painter().rect(rect, Rounding::same(6.0), bg_color, border);
-    ui.painter().text(
-        rect.center(), Align2::CENTER_CENTER, "✕",
-        FontId::proportional(13.0), text_color,
-    );
-
+    ui.painter().text(rect.center(), Align2::CENTER_CENTER, "✕", FontId::proportional(13.0), text_color);
     response
 }
 
@@ -726,6 +708,28 @@ fn render_match_context(painter: &egui::Painter, pos: egui::Pos2,
     }
 }
 
+// ─── ghost_btn / toggle_btn helpers ──────────────────────────────────────────
+
+/// A lightweight outlined "ghost" button — for secondary actions like Wrap, Nav.
+fn ghost_btn<'a>(label: &'a str, active: bool, col: &Colors) -> Button<'a> {
+    let (fg, bg, stroke) = if active {
+        (col.accent,
+         Color32::from_rgba_unmultiplied(col.accent.r(), col.accent.g(), col.accent.b(), 22),
+         Stroke::new(1.0, Color32::from_rgba_unmultiplied(col.accent.r(), col.accent.g(), col.accent.b(), 140)))
+    } else {
+        (col.muted, Color32::TRANSPARENT, Stroke::new(0.5, col.border))
+    };
+    Button::new(RichText::new(label).color(fg).font(FontId::proportional(11.5)))
+        .fill(bg).stroke(stroke).rounding(Rounding::same(6.0)).min_size(Vec2::new(0.0, 26.0))
+}
+
+/// Icon-only tool button (font-size ±, etc.)
+fn icon_btn<'a>(icon: &'a str, col: &Colors) -> Button<'a> {
+    Button::new(RichText::new(icon).color(col.muted).font(FontId::proportional(13.0)))
+        .fill(col.bg_input).stroke(Stroke::new(0.5, col.border))
+        .rounding(Rounding::same(6.0)).min_size(Vec2::new(28.0, 26.0))
+}
+
 // ─── App::update ─────────────────────────────────────────────────────────────
 
 impl App for LogViewerApp {
@@ -781,7 +785,6 @@ impl App for LogViewerApp {
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 2.0;
-        
                     ui.visuals_mut().widgets.inactive.bg_fill   = Color32::TRANSPARENT;
                     ui.visuals_mut().widgets.inactive.bg_stroke = Stroke::NONE;
                     ui.visuals_mut().widgets.hovered.bg_fill    = Color32::from_rgba_unmultiplied(255, 255, 255, 12);
@@ -840,218 +843,152 @@ impl App for LogViewerApp {
             });
 
         // ════════════════════════════════════════════════════════════════════
-        // TOOLBAR
+        // TOOLBAR  ── redesigned per UX critique
+        //
+        //  [LEFT]  filter-bar  |  module-dropdown
+        //  [MID]   ERR WRN INF DBG TRC  (desaturated when inactive)
+        //  [RIGHT] ── wrap · nav · − font + ──  open · clear    theme⬤
         // ════════════════════════════════════════════════════════════════════
         egui::TopBottomPanel::top("toolbar")
-            .exact_height(42.0)
+            .exact_height(44.0)
             .frame(egui::Frame::none()
                 .fill(col.bg_toolbar)
                 .stroke(Stroke::new(1.0, col.border))
-                .inner_margin(egui::Margin { left: 12.0, right: 12.0, top: 0.0, bottom: 0.0 }))
+                .inner_margin(egui::Margin { left: 12.0, right: 10.0, top: 0.0, bottom: 0.0 }))
             .show(ctx, |ui| {
-                ui.add_space(8.0);
+                ui.add_space(9.0);
                 ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing.x = 8.0;
+                    ui.spacing_mut().item_spacing.x = 6.0;
 
-                    let filter_active = !self.filter_text.is_empty();
-                    let search_bar_border = if filter_active {
-                        Color32::from_rgba_unmultiplied(col.accent.r(), col.accent.g(), col.accent.b(), 120)
-                    } else {
-                        col.border_hl
-                    };
-                    
-                    let bar_resp = egui::Frame::none()
-                        .fill(col.bg_search)
-                        .stroke(Stroke::new(1.0, search_bar_border))
-                        .rounding(Rounding::same(6.0))
-                        .inner_margin(egui::Margin { left: 10.0, right: 6.0, top: 0.0, bottom: 0.0 })
-                        .show(ui, |ui| {
-                            ui.set_height(26.0);
-                            ui.horizontal(|ui| {
-                                ui.spacing_mut().item_spacing.x = 6.0;
-                    
-                                // Search icon only
-                                ui.label(
-                                    RichText::new("⌕")
-                                        .font(FontId::proportional(16.0))
-                                        .color(if filter_active { col.accent } else { col.muted }),
-                                );
-                    
-                                let te = ui.add(
-                                    TextEdit::singleline(&mut self.filter_text)
-                                        .id(egui::Id::new("toolbar_filter"))
-                                        .hint_text("")
-                                        .desired_width(168.0)
-                                        .font(FontId::proportional(12.5))
-                                        .frame(false),
-                                );
-                                if te.changed() { self.apply_filters(); }
-                    
-                                // Inline ✕ only when there's text
-                                if filter_active {
-                                    if ui.add(
-                                        Button::new(
-                                            RichText::new("✕")
-                                                .font(FontId::proportional(10.5))
-                                                .color(col.muted),
-                                        )
-                                        .fill(Color32::TRANSPARENT)
-                                        .stroke(Stroke::NONE)
-                                        .min_size(Vec2::new(22.0, 22.0)),
-                                    )
-                                    .on_hover_text("Clear  Esc")
-                                    .clicked()
-                                    {
-                                        self.filter_text.clear();
-                                        self.apply_filters();
-                                    }
-                                }
-                            });
-                        });
-                    let _ = bar_resp;
+                    // ── LEFT GROUP: filter bar + module dropdown ──────────
+                    {
+                        let filter_active = !self.filter_text.is_empty();
+                        let search_border = if filter_active {
+                            Color32::from_rgba_unmultiplied(col.accent.r(), col.accent.g(), col.accent.b(), 160)
+                        } else { col.border_hl };
 
-                    if !self.modules.is_empty() {
-                        ui.add(egui::Separator::default().vertical().spacing(4.0));
-                        let lbl = if self.module_filter.is_empty() { "All modules".to_string() }
-                            else if self.module_filter.len() > 18
-                                { format!("…{}", &self.module_filter[self.module_filter.len()-16..]) }
-                            else { self.module_filter.clone() };
-                        let mut changed = false;
-                        egui::ComboBox::from_id_source("mod_cb")
-                            .selected_text(RichText::new(lbl).font(FontId::proportional(11.5)).color(col.text))
-                            .width(148.0)
-                            .show_ui(ui, |ui| {
-                                if ui.selectable_label(self.module_filter.is_empty(),
-                                    RichText::new("All modules").color(col.muted).font(FontId::proportional(11.5))).clicked() {
-                                    self.module_filter.clear(); changed = true;
-                                }
-                                for m in self.modules.clone() {
-                                    let d = if m.len() > 26 { format!("…{}", &m[m.len()-24..]) } else { m.clone() };
-                                    if ui.selectable_label(self.module_filter == m,
-                                        RichText::new(d).font(FontId::proportional(11.5))).clicked() {
-                                        self.module_filter = m; changed = true;
+                        egui::Frame::none()
+                            .fill(col.bg_search)
+                            .stroke(Stroke::new(1.0, search_border))
+                            .rounding(Rounding::same(7.0))
+                            .inner_margin(egui::Margin { left: 9.0, right: 5.0, top: 0.0, bottom: 0.0 })
+                            .show(ui, |ui| {
+                                ui.set_height(26.0);
+                                ui.horizontal(|ui| {
+                                    ui.spacing_mut().item_spacing.x = 5.0;
+                                    ui.label(RichText::new("⌕").font(FontId::proportional(15.0))
+                                        .color(if filter_active { col.accent } else { col.faint }));
+                                    let te = ui.add(
+                                        TextEdit::singleline(&mut self.filter_text)
+                                            .id(egui::Id::new("toolbar_filter"))
+                                            .hint_text(RichText::new("Filter…").color(col.faint))
+                                            .desired_width(150.0)
+                                            .font(FontId::proportional(12.5))
+                                            .frame(false),
+                                    );
+                                    if te.changed() { self.apply_filters(); }
+                                    if filter_active {
+                                        if ui.add(Button::new(
+                                            RichText::new("✕").font(FontId::proportional(10.0)).color(col.faint))
+                                            .fill(Color32::TRANSPARENT).stroke(Stroke::NONE)
+                                            .min_size(Vec2::new(20.0, 20.0)))
+                                            .on_hover_text("Clear  Esc").clicked() {
+                                            self.filter_text.clear(); self.apply_filters();
+                                        }
                                     }
-                                }
+                                });
                             });
-                        if changed { self.apply_filters(); }
+
+                        // Module dropdown — only when a file is loaded
+                        if !self.modules.is_empty() {
+                            let lbl = if self.module_filter.is_empty() { "All modules".to_string() }
+                                else if self.module_filter.len() > 16
+                                    { format!("…{}", &self.module_filter[self.module_filter.len()-14..]) }
+                                else { self.module_filter.clone() };
+                            let mut changed = false;
+                            egui::ComboBox::from_id_source("mod_cb")
+                                .selected_text(RichText::new(lbl).font(FontId::proportional(11.5)).color(col.text))
+                                .width(140.0)
+                                .show_ui(ui, |ui| {
+                                    if ui.selectable_label(self.module_filter.is_empty(),
+                                        RichText::new("All modules").color(col.muted).font(FontId::proportional(11.5))).clicked() {
+                                        self.module_filter.clear(); changed = true;
+                                    }
+                                    for m in self.modules.clone() {
+                                        let d = if m.len() > 24 { format!("…{}", &m[m.len()-22..]) } else { m.clone() };
+                                        if ui.selectable_label(self.module_filter == m,
+                                            RichText::new(d).font(FontId::proportional(11.5))).clicked() {
+                                            self.module_filter = m; changed = true;
+                                        }
+                                    }
+                                });
+                            if changed { self.apply_filters(); }
+                        }
                     }
 
+                    // ── DIVIDER ───────────────────────────────────────────
                     ui.add(egui::Separator::default().vertical().spacing(4.0));
 
-                    let defs: [(usize,&str,Color32); 5] = [
-                        (0,"ERR",Level::Error.color()),
-                        (1,"WRN",Level::Warning.color()),
-                        (2,"INF",Level::Info.color()),
-                        (3,"DBG",Level::Debug.color()),
-                        (4,"TRC",Level::Trace.color()),
-                    ];
-                    let mut fc = false;
-                    for (idx, lbl, lv_color) in defs {
-                        let active = self.show[idx];
-                        let (fg, bg, stroke) = if active {
-                            (lv_color,
-                             Color32::from_rgba_unmultiplied(lv_color.r(), lv_color.g(), lv_color.b(), 22),
-                             Stroke::new(1.0, Color32::from_rgba_unmultiplied(lv_color.r(), lv_color.g(), lv_color.b(), 140)))
-                        } else {
-                            (col.faint, Color32::TRANSPARENT, Stroke::new(0.5, col.border))
-                        };
-                        if ui.add(Button::new(
-                            RichText::new(format!("{} {}", lbl, self.counts[idx]))
-                                .color(fg).font(FontId::monospace(11.0)).strong(),
-                        ).fill(bg).stroke(stroke).rounding(Rounding::same(6.0))
-                            .min_size(Vec2::new(0.0, 26.0))).clicked()
-                        { self.show[idx] = !self.show[idx]; fc = true; }
+                    // ── MIDDLE GROUP: level toggles ───────────────────────
+                    // Inactive toggles use desaturated color so only active
+                    // ones (or those with data) draw the eye.
+                    {
+                        let defs: [(usize,&str,Color32); 5] = [
+                            (0,"ERR",Level::Error.color()),
+                            (1,"WRN",Level::Warning.color()),
+                            (2,"INF",Level::Info.color()),
+                            (3,"DBG",Level::Debug.color()),
+                            (4,"TRC",Level::Trace.color()),
+                        ];
+                        let mut fc = false;
+                        for (idx, lbl, lv_color) in defs {
+                            let active  = self.show[idx];
+                            let has_data = self.counts[idx] > 0;
+
+                            // When inactive: dim everything to near-grey.
+                            // When active but no data: show a faint outline.
+                            // When active and has data: full color.
+                            let (fg, bg, border_col) = if !active {
+                                // Off — recede completely
+                                (col.faint, Color32::TRANSPARENT, Stroke::new(0.5, col.border))
+                            } else if !has_data {
+                                // Active, but 0 lines of this level → dim
+                                (Color32::from_rgba_unmultiplied(lv_color.r(), lv_color.g(), lv_color.b(), 90),
+                                 Color32::TRANSPARENT,
+                                 Stroke::new(0.5, Color32::from_rgba_unmultiplied(lv_color.r(), lv_color.g(), lv_color.b(), 60)))
+                            } else {
+                                // Active with data → full vibrancy
+                                (lv_color,
+                                 Color32::from_rgba_unmultiplied(lv_color.r(), lv_color.g(), lv_color.b(), 22),
+                                 Stroke::new(1.0, Color32::from_rgba_unmultiplied(lv_color.r(), lv_color.g(), lv_color.b(), 140)))
+                            };
+
+                            if ui.add(Button::new(
+                                RichText::new(format!("{} {}", lbl, self.counts[idx]))
+                                    .color(fg).font(FontId::monospace(11.0)).strong(),
+                            ).fill(bg).stroke(border_col).rounding(Rounding::same(6.0))
+                                .min_size(Vec2::new(0.0, 26.0))).clicked()
+                            { self.show[idx] = !self.show[idx]; fc = true; }
+                        }
+                        if fc { self.apply_filters(); }
                     }
-                    if fc { self.apply_filters(); }
 
+                    // ── RIGHT GROUP (right-to-left layout) ────────────────
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        ui.spacing_mut().item_spacing.x = 6.0;
+                        ui.spacing_mut().item_spacing.x = 4.0;
 
+                        // ① Theme toggle — absolute far right, visually separated
                         let theme_icon = if self.dark_mode { "☀" } else { "🌙" };
-                        let theme_tip  = if self.dark_mode { "Switch to light mode" } else { "Switch to dark mode" };
-                        if ui.add(
-                            Button::new(RichText::new(theme_icon).color(col.muted).font(FontId::proportional(14.0)))
-                                .fill(col.bg_input)
-                                .stroke(Stroke::new(0.5, col.border))
-                                .rounding(Rounding::same(7.0))
-                                .min_size(Vec2::new(32.0, 26.0))
-                        ).on_hover_text(theme_tip).clicked() {
+                        let theme_tip  = if self.dark_mode { "Light mode" } else { "Dark mode" };
+                        if ui.add(icon_btn(theme_icon, &col)).on_hover_text(theme_tip).clicked() {
                             self.dark_mode = !self.dark_mode;
                         }
 
-                        ui.add(egui::Separator::default().vertical().spacing(4.0));
+                        ui.add(egui::Separator::default().vertical().spacing(6.0));
 
-                        for (icon, delta, tip) in [("A+", 1.0_f32, "Larger font"), ("A-", -1.0, "Smaller font")] {
-                            if ui.add(
-                                Button::new(RichText::new(icon).color(col.muted).font(FontId::proportional(12.0)))
-                                    .fill(col.bg_input)
-                                    .stroke(Stroke::new(0.5, col.border))
-                                    .rounding(Rounding::same(7.0))
-                                    .min_size(Vec2::new(32.0, 26.0))
-                            ).on_hover_text(tip).clicked() {
-                                self.font_size = (self.font_size + delta).clamp(9.0, 20.0);
-                                self.row_height = self.font_size + 8.0;
-                            }
-                        }
-
-                        ui.add(egui::Separator::default().vertical().spacing(4.0));
-
-                        let nav_active = self.nav_open;
-                        let nav_lbl = if !self.nav_entries.is_empty()
-                            { format!("Nav  {}", self.nav_entries.len()) } else { "Nav".into() };
-                        if ui.add(
-                            Button::new(RichText::new(nav_lbl)
-                                .color(if nav_active { col.accent } else { col.muted })
-                                .font(FontId::proportional(11.5)))
-                                .fill(if nav_active {
-                                    Color32::from_rgba_unmultiplied(col.accent.r(), col.accent.g(), col.accent.b(), 22)
-                                } else { col.bg_input })
-                                .stroke(Stroke::new(if nav_active { 1.0 } else { 0.5 },
-                                    if nav_active {
-                                        Color32::from_rgba_unmultiplied(col.accent.r(), col.accent.g(), col.accent.b(), 140)
-                                    } else { col.border }))
-                                .rounding(Rounding::same(7.0))
-                                .min_size(Vec2::new(0.0, 26.0))
-                        ).on_hover_text("Navigation panel  Ctrl+N").clicked() {
-                            self.nav_open = !self.nav_open;
-                        }
-
-                        let wrap_active = self.wrap_lines;
-                        if ui.add(
-                            Button::new(RichText::new(if wrap_active { "↩ Wrap" } else { "→ Wrap" })
-                                .color(if wrap_active { col.accent } else { col.muted })
-                                .font(FontId::proportional(11.5)))
-                                .fill(col.bg_input)
-                                .stroke(Stroke::new(0.5, if wrap_active {
-                                    Color32::from_rgba_unmultiplied(col.accent.r(), col.accent.g(), col.accent.b(), 100)
-                                } else { col.border }))
-                                .rounding(Rounding::same(7.0))
-                                .min_size(Vec2::new(0.0, 26.0))
-                        ).on_hover_text("Toggle line wrap  Ctrl+W").clicked() {
-                            self.wrap_lines = !self.wrap_lines;
-                        }
-
-                        ui.add(egui::Separator::default().vertical().spacing(4.0));
-
-                        if self.all_lines.is_empty() {
-                            if ui.add(
-                                Button::new(RichText::new("📂  Open File")
-                                    .strong().color(col.bg_base).font(FontId::proportional(12.0)))
-                                    .fill(col.accent)
-                                    .stroke(Stroke::NONE)
-                                    .rounding(Rounding::same(7.0))
-                                    .min_size(Vec2::new(0.0, 26.0))
-                            ).clicked() { self.open_file_dialog(); }
-                        } else {
-                            if ui.add(
-                                Button::new(RichText::new("📂  Open")
-                                    .color(col.text).font(FontId::proportional(11.5)))
-                                    .fill(col.bg_input)
-                                    .stroke(Stroke::new(0.5, col.border))
-                                    .rounding(Rounding::same(7.0))
-                                    .min_size(Vec2::new(0.0, 26.0))
-                            ).clicked() { self.open_file_dialog(); }
-
+                        // ② File actions — only shown once a file is loaded.
+                        //    Empty state redirects users to the large center CTA.
+                        if !self.all_lines.is_empty() {
                             if ui.add(
                                 Button::new(RichText::new("🗑  Clear")
                                     .color(col.muted).font(FontId::proportional(11.5)))
@@ -1060,6 +997,45 @@ impl App for LogViewerApp {
                                     .rounding(Rounding::same(7.0))
                                     .min_size(Vec2::new(0.0, 26.0))
                             ).clicked() { self.clear_file(); }
+
+                            if ui.add(
+                                Button::new(RichText::new("📂  Open")
+                                    .color(col.text).font(FontId::proportional(11.5)))
+                                    .fill(col.bg_input)
+                                    .stroke(Stroke::new(0.5, col.border))
+                                    .rounding(Rounding::same(7.0))
+                                    .min_size(Vec2::new(0.0, 26.0))
+                            ).on_hover_text("Open file  Ctrl+O").clicked() { self.open_file_dialog(); }
+
+                            ui.add(egui::Separator::default().vertical().spacing(6.0));
+
+                            // ③ View-settings group: Wrap · Nav · font −/+
+                            //    Font size uses − / + to make the action obvious.
+                            if ui.add(icon_btn("+", &col)).on_hover_text("Larger font").clicked() {
+                                self.font_size = (self.font_size + 1.0).clamp(9.0, 20.0);
+                                self.row_height = self.font_size + 8.0;
+                            }
+                            ui.label(RichText::new(format!("{}pt", self.font_size as u8))
+                                .font(FontId::monospace(10.0)).color(col.faint));
+                            if ui.add(icon_btn("−", &col)).on_hover_text("Smaller font").clicked() {
+                                self.font_size = (self.font_size - 1.0).clamp(9.0, 20.0);
+                                self.row_height = self.font_size + 8.0;
+                            }
+
+                            ui.add_space(2.0);
+
+                            let nav_lbl = if !self.nav_entries.is_empty()
+                                { format!("Nav  {}", self.nav_entries.len()) } else { "Nav".into() };
+                            if ui.add(ghost_btn(&nav_lbl, self.nav_open, &col))
+                                .on_hover_text("Navigation panel  Ctrl+N").clicked() {
+                                self.nav_open = !self.nav_open;
+                            }
+
+                            let wrap_lbl = if self.wrap_lines { "↩ Wrap" } else { "↪ Wrap" };
+                            if ui.add(ghost_btn(wrap_lbl, self.wrap_lines, &col))
+                                .on_hover_text("Toggle line wrap  Ctrl+W").clicked() {
+                                self.wrap_lines = !self.wrap_lines;
+                            }
                         }
                     });
                 });
@@ -1068,7 +1044,9 @@ impl App for LogViewerApp {
         // FIND DIALOG
         self.render_find_dialog(ctx, &col);
 
+        // ════════════════════════════════════════════════════════════════════
         // STATUS BAR
+        // ════════════════════════════════════════════════════════════════════
         egui::TopBottomPanel::bottom("statusbar")
             .exact_height(26.0)
             .frame(egui::Frame::none()
@@ -1101,7 +1079,9 @@ impl App for LogViewerApp {
                 });
             });
 
+        // ════════════════════════════════════════════════════════════════════
         // DETAIL PANEL
+        // ════════════════════════════════════════════════════════════════════
         if self.detail_open {
             let sel: Option<LogLine> = self.selected
                 .and_then(|r| self.filtered.get(r).copied())
@@ -1122,7 +1102,6 @@ impl App for LogViewerApp {
                                 ui.spacing_mut().item_spacing.x = 6.0;
                                 let mut close = false;
                                 if premium_close_button(ui, &col).clicked() { close = true; }
-
                                 let is_bm = self.is_bookmarked(self.selected.unwrap_or(0));
                                 if ui.add(
                                     Button::new(RichText::new(if is_bm { "♥ Bookmarked" } else { "♡ Bookmark" })
@@ -1221,7 +1200,7 @@ impl App for LogViewerApp {
                         let wy0 = (by0 + vt * ah).min(r.max.y - 4.0);
                         let wy1 = (by0 + vb * ah).clamp(wy0 + 4.0, r.max.y);
                         painter.rect(
-                            egui::Rect::from_min_max(egui::pos2(r.min.x + 0.5, wy0), egui::pos2(r.max.x - 0.5, wy1)),
+                            egui::Rect::from_min_size(egui::pos2(r.min.x + 0.5, wy0), egui::pos2(r.max.x - 0.5, wy1)),
                             Rounding::same(2.0),
                             Color32::from_rgba_unmultiplied(col.accent.r(), col.accent.g(), col.accent.b(), 20),
                             Stroke::new(1.0, Color32::from_rgba_unmultiplied(col.accent.r(), col.accent.g(), col.accent.b(), 120)));
@@ -1261,9 +1240,9 @@ impl App for LogViewerApp {
                 .map(|e| (e.kind, e.row_idx, e.line_num, e.label.clone()))
                 .collect();
 
-            let nav_bg    = if self.dark_mode { Color32::from_rgb(13,16,24) } else { Color32::from_rgb(230,236,250) };
-            let nav_hdr   = if self.dark_mode { Color32::from_rgb(16,20,30) } else { Color32::from_rgb(220,228,244) };
-            let nav_flt   = if self.dark_mode { Color32::from_rgb(12,15,22) } else { Color32::from_rgb(235,240,252) };
+            let nav_bg  = if self.dark_mode { Color32::from_rgb(13,16,24) } else { Color32::from_rgb(230,236,250) };
+            let nav_hdr = if self.dark_mode { Color32::from_rgb(16,20,30) } else { Color32::from_rgb(220,228,244) };
+            let nav_flt = if self.dark_mode { Color32::from_rgb(12,15,22) } else { Color32::from_rgb(235,240,252) };
 
             egui::SidePanel::right("nav_panel")
                 .default_width(220.0).width_range(160.0..=320.0).resizable(true)
@@ -1386,19 +1365,11 @@ impl App for LogViewerApp {
                     let screen = ui.max_rect();
                     let overlay_painter = ui.painter();
                     overlay_painter.rect(
-                        screen,
-                        Rounding::same(0.0),
-                        Color32::from_rgba_unmultiplied(
-                            col.accent.r(), col.accent.g(), col.accent.b(), 18),
-                        Stroke::new(3.0, col.accent),
-                    );
-                    overlay_painter.text(
-                        screen.center(),
-                        Align2::CENTER_CENTER,
-                        "Drop file to open",
-                        FontId::proportional(26.0),
-                        col.accent,
-                    );
+                        screen, Rounding::same(0.0),
+                        Color32::from_rgba_unmultiplied(col.accent.r(), col.accent.g(), col.accent.b(), 18),
+                        Stroke::new(3.0, col.accent));
+                    overlay_painter.text(screen.center(), Align2::CENTER_CENTER,
+                        "Drop file to open", FontId::proportional(26.0), col.accent);
                     return;
                 }
 
@@ -1418,7 +1389,7 @@ impl App for LogViewerApp {
                                 Button::new(RichText::new("  📂  Open File  ")
                                     .strong().color(col.bg_base).font(FontId::proportional(13.0)))
                                     .fill(col.accent).stroke(Stroke::NONE)
-                                    .rounding(Rounding::same(8.0)).min_size(Vec2::new(0.0, 34.0))
+                                    .rounding(Rounding::same(8.0)).min_size(Vec2::new(0.0, 36.0))
                             ).clicked() { self.open_file_dialog(); }
                             ui.add_space(18.0);
                             ui.label(RichText::new("Ctrl+O  open  ·  Ctrl+F  find  ·  Ctrl+N  nav  ·  Esc  clear")
@@ -1574,9 +1545,8 @@ impl App for LogViewerApp {
 impl LogViewerApp {
     fn render_find_dialog(&mut self, ctx: &egui::Context, col: &Colors) {
         if !self.find_dialog_open { return; }
-    
         let mut close_req = false;
-    
+
         let panel_fill = if self.dark_mode {
             Color32::from_rgba_unmultiplied(16, 20, 30, 210)
         } else {
@@ -1587,7 +1557,7 @@ impl LogViewerApp {
         } else {
             Color32::from_rgba_unmultiplied(30, 110, 220, 50)
         };
-    
+
         Window::new("find_dlg_w")
             .id(egui::Id::new("find_dlg"))
             .default_pos(egui::pos2(80.0, 88.0))
@@ -1595,131 +1565,81 @@ impl LogViewerApp {
             .collapsible(false)
             .resizable(false)
             .title_bar(false)
-            .frame(
-                egui::Frame::none()
-                    .fill(panel_fill)
-                    .stroke(Stroke::new(1.0, border_col))
-                    .rounding(Rounding::same(12.0))
-                    .shadow(egui::epaint::Shadow {
-                        offset: Vec2::new(0.0, 8.0),
-                        blur: 28.0,
-                        spread: 0.0,
-                        color: Color32::from_black_alpha(120),
-                    }),
-            )
+            .frame(egui::Frame::none()
+                .fill(panel_fill)
+                .stroke(Stroke::new(1.0, border_col))
+                .rounding(Rounding::same(12.0))
+                .shadow(egui::epaint::Shadow {
+                    offset: Vec2::new(0.0, 8.0),
+                    blur: 28.0, spread: 0.0,
+                    color: Color32::from_black_alpha(120),
+                }))
             .show(ctx, |ui| {
                 ui.spacing_mut().item_spacing = Vec2::ZERO;
-    
+
                 let hdr_fill = if self.dark_mode {
                     Color32::from_rgba_unmultiplied(22, 28, 42, 230)
                 } else {
                     Color32::from_rgba_unmultiplied(220, 228, 248, 220)
                 };
-    
-                let hdr_resp = egui::Frame::none()
+
+                egui::Frame::none()
                     .fill(hdr_fill)
                     .rounding(Rounding { nw: 12.0, ne: 12.0, sw: 0.0, se: 0.0 })
                     .inner_margin(egui::Margin { left: 16.0, right: 8.0, top: 7.0, bottom: 7.0 })
                     .show(ui, |ui| {
                         ui.horizontal(|ui| {
                             ui.set_min_height(26.0);
-    
-                            ui.label(
-                                RichText::new("⠿")
-                                    .font(FontId::proportional(13.0))
-                                    .color(col.faint),
-                            );
+                            ui.label(RichText::new("⠿").font(FontId::proportional(13.0)).color(col.faint));
                             ui.add_space(6.0);
-    
-                            ui.label(
-                                RichText::new("Find")
-                                    .font(FontId::proportional(13.0))
-                                    .color(col.text)
-                                    .strong(),
-                            );
-    
+                            ui.label(RichText::new("Find").font(FontId::proportional(13.0)).color(col.text).strong());
                             if !self.search.matches.is_empty() {
                                 ui.add_space(8.0);
-                                let badge = format!(
-                                    "{} / {}",
-                                    self.search.current_match_idx + 1,
-                                    self.search.matches.len()
-                                );
+                                let badge = format!("{} / {}", self.search.current_match_idx+1, self.search.matches.len());
                                 egui::Frame::none()
-                                    .fill(Color32::from_rgba_unmultiplied(
-                                        col.accent.r(), col.accent.g(), col.accent.b(), 40,
-                                    ))
+                                    .fill(Color32::from_rgba_unmultiplied(col.accent.r(), col.accent.g(), col.accent.b(), 40))
                                     .rounding(Rounding::same(10.0))
                                     .inner_margin(egui::Margin::symmetric(9.0, 2.0))
                                     .show(ui, |ui| {
-                                        ui.label(
-                                            RichText::new(badge)
-                                                .font(FontId::monospace(10.0))
-                                                .color(col.accent),
-                                        );
+                                        ui.label(RichText::new(badge).font(FontId::monospace(10.0)).color(col.accent));
                                     });
                             }
-    
                             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                if premium_close_button(ui, col).clicked() {
-                                    close_req = true;
-                                }
+                                if premium_close_button(ui, col).clicked() { close_req = true; }
                             });
                         });
-                    })
-                    .response;
-    
-                if hdr_resp.interact(Sense::drag()).dragged() {
-                }
-    
+                    });
+
                 ui.painter().rect_filled(
-                    egui::Rect::from_min_size(
-                        ui.cursor().min,
-                        Vec2::new(ui.available_width(), 1.0),
-                    ),
+                    egui::Rect::from_min_size(ui.cursor().min, Vec2::new(ui.available_width(), 1.0)),
                     Rounding::ZERO,
-                    Color32::from_rgba_unmultiplied(
-                        col.accent.r(), col.accent.g(), col.accent.b(), 55,
-                    ),
-                );
+                    Color32::from_rgba_unmultiplied(col.accent.r(), col.accent.g(), col.accent.b(), 55));
                 ui.add_space(1.0);
-    
+
                 egui::Frame::none()
                     .inner_margin(egui::Margin { left: 18.0, right: 18.0, top: 14.0, bottom: 14.0 })
                     .show(ui, |ui| {
                         ui.spacing_mut().item_spacing.y = 0.0;
-    
+
                         let input_bg = if self.dark_mode {
                             Color32::from_rgba_unmultiplied(10, 13, 22, 200)
                         } else {
                             Color32::from_rgba_unmultiplied(255, 255, 255, 220)
                         };
-                        let input_border = if self.search.find_what.is_empty() {
-                            col.border
-                        } else {
-                            Color32::from_rgba_unmultiplied(
-                                col.accent.r(), col.accent.g(), col.accent.b(), 160,
-                            )
-                        };
-    
+                        let input_border = if self.search.find_what.is_empty() { col.border }
+                            else { Color32::from_rgba_unmultiplied(col.accent.r(), col.accent.g(), col.accent.b(), 160) };
+
                         egui::Frame::none()
-                            .fill(input_bg)
-                            .stroke(Stroke::new(1.0, input_border))
+                            .fill(input_bg).stroke(Stroke::new(1.0, input_border))
                             .rounding(Rounding::same(8.0))
                             .inner_margin(egui::Margin { left: 10.0, right: 4.0, top: 0.0, bottom: 0.0 })
                             .show(ui, |ui| {
                                 ui.horizontal(|ui| {
-                                    ui.label(
-                                        RichText::new("⌕")
-                                            .font(FontId::proportional(15.0))
-                                            .color(col.faint),
-                                    );
+                                    ui.label(RichText::new("⌕").font(FontId::proportional(15.0)).color(col.faint));
                                     ui.add_space(4.0);
                                     let te = ui.add(
                                         TextEdit::singleline(&mut self.search.find_what)
-                                            .hint_text(
-                                                RichText::new("Search in log…").color(col.faint),
-                                            )
+                                            .hint_text(RichText::new("Search in log…").color(col.faint))
                                             .desired_width(ui.available_width() - 30.0)
                                             .font(FontId::monospace(12.5))
                                             .frame(false),
@@ -1728,37 +1648,24 @@ impl LogViewerApp {
                                         self.search.first_search = true;
                                         self.search.find_all(&self.filtered, &self.all_lines);
                                     }
-                                    let enter_pressed = te.lost_focus()
-                                        && ui.input(|i| i.key_pressed(Key::Enter));
-    
+                                    let enter_pressed = te.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter));
                                     if !self.search.find_what.is_empty() {
-                                        if ui.add(
-                                            Button::new(
-                                                RichText::new("✕")
-                                                    .font(FontId::proportional(11.0))
-                                                    .color(col.faint),
-                                            )
-                                            .fill(Color32::TRANSPARENT)
-                                            .stroke(Stroke::NONE)
-                                            .min_size(Vec2::new(24.0, 24.0)),
-                                        )
-                                        .clicked()
-                                        {
+                                        if ui.add(Button::new(RichText::new("✕").font(FontId::proportional(11.0)).color(col.faint))
+                                            .fill(Color32::TRANSPARENT).stroke(Stroke::NONE).min_size(Vec2::new(24.0, 24.0)))
+                                            .clicked() {
                                             self.search.find_what.clear();
                                             self.search.find_all(&self.filtered, &self.all_lines);
                                         }
                                     }
-    
                                     if enter_pressed { self.do_find_next(); }
                                 });
                             });
-    
+
                         ui.add_space(10.0);
-    
+
                         ui.horizontal(|ui| {
                             ui.spacing_mut().item_spacing.x = 4.0;
                             let mut chg = false;
-    
                             for (val, label) in [
                                 (&mut self.search.match_case,  "Aa"),
                                 (&mut self.search.whole_word,  "\"W\""),
@@ -1767,199 +1674,71 @@ impl LogViewerApp {
                             ] {
                                 let active = *val;
                                 let (fg, bg, stroke) = if active {
-                                    (
-                                        col.accent,
-                                        Color32::from_rgba_unmultiplied(
-                                            col.accent.r(), col.accent.g(), col.accent.b(), 28,
-                                        ),
-                                        Stroke::new(
-                                            1.0,
-                                            Color32::from_rgba_unmultiplied(
-                                                col.accent.r(), col.accent.g(), col.accent.b(), 140,
-                                            ),
-                                        ),
-                                    )
+                                    (col.accent,
+                                     Color32::from_rgba_unmultiplied(col.accent.r(), col.accent.g(), col.accent.b(), 28),
+                                     Stroke::new(1.0, Color32::from_rgba_unmultiplied(col.accent.r(), col.accent.g(), col.accent.b(), 140)))
                                 } else {
                                     (col.faint, Color32::TRANSPARENT, Stroke::new(0.5, col.border))
                                 };
-                                if ui
-                                    .add(
-                                        Button::new(
-                                            RichText::new(label)
-                                                .font(FontId::monospace(11.5))
-                                                .color(fg),
-                                        )
-                                        .fill(bg)
-                                        .stroke(stroke)
-                                        .rounding(Rounding::same(6.0))
-                                        .min_size(Vec2::new(34.0, 28.0)),
-                                    )
+                                if ui.add(Button::new(RichText::new(label).font(FontId::monospace(11.5)).color(fg))
+                                    .fill(bg).stroke(stroke).rounding(Rounding::same(6.0)).min_size(Vec2::new(34.0, 28.0)))
                                     .on_hover_text(match label {
-                                        "Aa"    => "Match case",
-                                        "\"W\"" => "Whole word",
-                                        "↻"     => "Wrap around",
-                                        _       => "Search backward",
-                                    })
-                                    .clicked()
-                                {
-                                    *val = !*val;
-                                    chg = true;
-                                }
+                                        "Aa" => "Match case", "\"W\"" => "Whole word",
+                                        "↻" => "Wrap around", _ => "Search backward" })
+                                    .clicked() { *val = !*val; chg = true; }
                             }
-    
                             if chg {
                                 self.search.first_search = true;
                                 self.search.find_all(&self.filtered, &self.all_lines);
                             }
-    
                             ui.add_space(6.0);
                             ui.add(egui::Separator::default().vertical().spacing(4.0));
                             ui.add_space(6.0);
-    
-                            for (mode, lbl) in [
-                                (SearchMode::Normal,   "Normal"),
-                                (SearchMode::Extended, "Ext"),
-                                (SearchMode::Regex,    "Regex"),
-                            ] {
+                            for (mode, lbl) in [(SearchMode::Normal,"Normal"),(SearchMode::Extended,"Ext"),(SearchMode::Regex,"Regex")] {
                                 let sel = self.search.mode == mode;
-                                if ui
-                                    .add(
-                                        Button::new(
-                                            RichText::new(lbl)
-                                                .font(FontId::proportional(10.5))
-                                                .color(if sel { col.accent } else { col.faint }),
-                                        )
-                                        .fill(if sel {
-                                            Color32::from_rgba_unmultiplied(
-                                                col.accent.r(), col.accent.g(), col.accent.b(), 22,
-                                            )
-                                        } else {
-                                            Color32::TRANSPARENT
-                                        })
-                                        .stroke(if sel {
-                                            Stroke::new(
-                                                1.0,
-                                                Color32::from_rgba_unmultiplied(
-                                                    col.accent.r(), col.accent.g(), col.accent.b(), 100,
-                                                ),
-                                            )
-                                        } else {
-                                            Stroke::new(0.5, col.border)
-                                        })
-                                        .rounding(Rounding::same(5.0))
-                                        .min_size(Vec2::new(0.0, 28.0)),
-                                    )
-                                    .clicked()
-                                {
+                                if ui.add(Button::new(RichText::new(lbl).font(FontId::proportional(10.5))
+                                    .color(if sel { col.accent } else { col.faint }))
+                                    .fill(if sel { Color32::from_rgba_unmultiplied(col.accent.r(), col.accent.g(), col.accent.b(), 22) } else { Color32::TRANSPARENT })
+                                    .stroke(if sel { Stroke::new(1.0, Color32::from_rgba_unmultiplied(col.accent.r(), col.accent.g(), col.accent.b(), 100)) } else { Stroke::new(0.5, col.border) })
+                                    .rounding(Rounding::same(5.0)).min_size(Vec2::new(0.0, 28.0)))
+                                    .clicked() {
                                     self.search.mode = mode;
                                     self.search.find_all(&self.filtered, &self.all_lines);
                                 }
                             }
                         });
-    
+
                         ui.add_space(14.0);
-    
+
                         ui.horizontal(|ui| {
                             ui.spacing_mut().item_spacing.x = 7.0;
                             let has_m = !self.search.matches.is_empty();
-    
-                            if ui
-                                .add(
-                                    Button::new(
-                                        RichText::new("▶  Next")
-                                            .strong()
-                                            .color(col.bg_base)
-                                            .font(FontId::proportional(12.0)),
-                                    )
-                                    .fill(col.accent)
-                                    .stroke(Stroke::NONE)
-                                    .rounding(Rounding::same(7.0))
-                                    .min_size(Vec2::new(88.0, 32.0)),
-                                )
-                                .clicked()
-                            {
-                                self.do_find_next();
-                            }
-    
-                            if ui
-                                .add_enabled(
-                                    has_m,
-                                    Button::new(
-                                        RichText::new("◀  Prev")
-                                            .color(col.text)
-                                            .font(FontId::proportional(12.0)),
-                                    )
-                                    .fill(if self.dark_mode {
-                                        Color32::from_rgba_unmultiplied(40, 50, 68, 200)
-                                    } else {
-                                        Color32::from_rgba_unmultiplied(200, 210, 235, 220)
-                                    })
-                                    .stroke(Stroke::new(1.0, col.border_hl))
-                                    .rounding(Rounding::same(7.0))
-                                    .min_size(Vec2::new(76.0, 32.0)),
-                                )
-                                .clicked()
-                            {
-                                self.do_find_prev();
-                            }
-    
-                            if ui
-                                .add(
-                                    Button::new(
-                                        RichText::new("☰  All")
-                                            .color(col.accent)
-                                            .font(FontId::proportional(12.0)),
-                                    )
-                                    .fill(Color32::from_rgba_unmultiplied(
-                                        col.accent.r(), col.accent.g(), col.accent.b(), 18,
-                                    ))
-                                    .stroke(Stroke::new(
-                                        1.0,
-                                        Color32::from_rgba_unmultiplied(
-                                            col.accent.r(), col.accent.g(), col.accent.b(), 80,
-                                        ),
-                                    ))
-                                    .rounding(Rounding::same(7.0))
-                                    .min_size(Vec2::new(64.0, 32.0)),
-                                )
-                                .clicked()
-                            {
-                                self.do_find_all_with_results();
-                            }
-    
+                            if ui.add(Button::new(RichText::new("▶  Next").strong().color(col.bg_base).font(FontId::proportional(12.0)))
+                                .fill(col.accent).stroke(Stroke::NONE).rounding(Rounding::same(7.0)).min_size(Vec2::new(88.0, 32.0)))
+                                .clicked() { self.do_find_next(); }
+                            if ui.add_enabled(has_m, Button::new(RichText::new("◀  Prev").color(col.text).font(FontId::proportional(12.0)))
+                                .fill(if self.dark_mode { Color32::from_rgba_unmultiplied(40,50,68,200) } else { Color32::from_rgba_unmultiplied(200,210,235,220) })
+                                .stroke(Stroke::new(1.0, col.border_hl)).rounding(Rounding::same(7.0)).min_size(Vec2::new(76.0, 32.0)))
+                                .clicked() { self.do_find_prev(); }
+                            if ui.add(Button::new(RichText::new("☰  All").color(col.accent).font(FontId::proportional(12.0)))
+                                .fill(Color32::from_rgba_unmultiplied(col.accent.r(), col.accent.g(), col.accent.b(), 18))
+                                .stroke(Stroke::new(1.0, Color32::from_rgba_unmultiplied(col.accent.r(), col.accent.g(), col.accent.b(), 80)))
+                                .rounding(Rounding::same(7.0)).min_size(Vec2::new(64.0, 32.0)))
+                                .clicked() { self.do_find_all_with_results(); }
                             if !self.search.find_what.is_empty() && self.search.matches.is_empty() {
                                 ui.add_space(6.0);
-                                ui.label(
-                                    RichText::new("✗ no matches")
-                                        .font(FontId::proportional(11.0))
-                                        .color(Color32::from_rgb(255, 100, 90)),
-                                );
+                                ui.label(RichText::new("✗ no matches").font(FontId::proportional(11.0)).color(Color32::from_rgb(255,100,90)));
                             }
-    
                             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                if ui
-                                    .add(
-                                        Button::new(
-                                            RichText::new("Close")
-                                                .color(col.faint)
-                                                .font(FontId::proportional(11.0)),
-                                        )
-                                        .fill(Color32::TRANSPARENT)
-                                        .stroke(Stroke::NONE)
-                                        .min_size(Vec2::new(0.0, 32.0)),
-                                    )
-                                    .clicked()
-                                {
-                                    close_req = true;
-                                }
+                                if ui.add(Button::new(RichText::new("Close").color(col.faint).font(FontId::proportional(11.0)))
+                                    .fill(Color32::TRANSPARENT).stroke(Stroke::NONE).min_size(Vec2::new(0.0, 32.0)))
+                                    .clicked() { close_req = true; }
                             });
                         });
                     });
             });
-    
-        if close_req {
-            self.find_dialog_open = false;
-        }
+
+        if close_req { self.find_dialog_open = false; }
     }
 
     fn render_results_panel(&mut self, ctx: &egui::Context, col: &Colors) {
@@ -1984,8 +1763,7 @@ impl LogViewerApp {
                             ui.add_space(8.0);
                             egui::Frame::none()
                                 .fill(Color32::from_rgba_unmultiplied(col.accent.r(),col.accent.g(),col.accent.b(),35))
-                                .rounding(Rounding::same(10.0))
-                                .inner_margin(egui::Margin::symmetric(10.0,3.0))
+                                .rounding(Rounding::same(10.0)).inner_margin(egui::Margin::symmetric(10.0,3.0))
                                 .show(ui, |ui| {
                                     ui.label(RichText::new(format!("{} matches", self.search.matches.len()))
                                         .font(FontId::monospace(10.5)).color(col.accent));
@@ -1996,21 +1774,19 @@ impl LogViewerApp {
                             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                                 ui.spacing_mut().item_spacing.x = 6.0;
                                 if premium_close_button(ui, col).clicked() { close_panel = true; }
-                                if ui.add(
-                                    Button::new(RichText::new("📋 Copy").color(col.muted).font(FontId::proportional(11.5)))
-                                        .fill(col.bg_input).stroke(Stroke::new(0.5, col.border))
-                                        .rounding(Rounding::same(6.0)).min_size(Vec2::new(0.0, 26.0))
-                                ).clicked() {
+                                if ui.add(Button::new(RichText::new("📋 Copy").color(col.muted).font(FontId::proportional(11.5)))
+                                    .fill(col.bg_input).stroke(Stroke::new(0.5, col.border))
+                                    .rounding(Rounding::same(6.0)).min_size(Vec2::new(0.0, 26.0))).clicked() {
                                     let t = self.search.matches.iter()
                                         .map(|m| format!("Line {}: {}", m.line_num, m.match_text))
                                         .collect::<Vec<_>>().join("\n");
                                     ui.output_mut(|o| o.copied_text = t);
                                 }
-                                if ui.add(
-                                    Button::new(RichText::new("💾 Export").color(col.muted).font(FontId::proportional(11.5)))
-                                        .fill(col.bg_input).stroke(Stroke::new(0.5, col.border))
-                                        .rounding(Rounding::same(6.0)).min_size(Vec2::new(0.0, 26.0))
-                                ).clicked() { self.export_search_results(); }
+                                if ui.add(Button::new(RichText::new("💾 Export").color(col.muted).font(FontId::proportional(11.5)))
+                                    .fill(col.bg_input).stroke(Stroke::new(0.5, col.border))
+                                    .rounding(Rounding::same(6.0)).min_size(Vec2::new(0.0, 26.0))).clicked() {
+                                    self.export_search_results();
+                                }
                             });
                         });
                     });
@@ -2035,24 +1811,20 @@ impl LogViewerApp {
                         let (rect, resp) = ui.allocate_exact_size(Vec2::new(ui.available_width(), rh), Sense::click());
                         if !ui.is_rect_visible(rect) { continue; }
                         let painter = ui.painter();
-
                         let row_even_bg = if self.dark_mode { Color32::from_rgb(13,16,22) } else { col.bg_base };
                         let bg = if is_current  { Color32::from_rgba_unmultiplied(col.accent.r(),col.accent.g(),col.accent.b(),32) }
                             else if resp.hovered() { if self.dark_mode { Color32::from_rgb(18,22,32) } else { col.bg_panel } }
                             else if idx%2==1    { row_even_bg }
                             else                { Color32::TRANSPARENT };
                         if bg != Color32::TRANSPARENT { painter.rect_filled(rect, Rounding::ZERO, bg); }
-
                         if is_current {
-                            painter.rect_filled(
-                                egui::Rect::from_min_size(rect.min, Vec2::new(3.0,rh)),
+                            painter.rect_filled(egui::Rect::from_min_size(rect.min, Vec2::new(3.0,rh)),
                                 Rounding::ZERO, col.accent);
                         }
                         let lc = mat.level.color();
                         painter.rect_filled(
                             egui::Rect::from_min_size(egui::pos2(rect.min.x+4.0, rect.min.y+5.0), Vec2::new(2.0, rh-10.0)),
                             Rounding::same(1.0), lc);
-
                         let y = rect.center().y; let mut x = rect.min.x + 14.0;
                         painter.text(egui::pos2(x+42.0, y), Align2::RIGHT_CENTER,
                             mat.line_num.to_string(), FontId::monospace(10.5), col.muted); x += 60.0;
@@ -2097,9 +1869,7 @@ fn main() -> eframe::Result<()> {
             let size: u32 = 32;
             let pixel_count = (size * size) as usize;
             let mut rgba = Vec::with_capacity(pixel_count * 4);
-            for _ in 0..pixel_count {
-                rgba.extend_from_slice(&[88, 166, 255, 255]);
-            }
+            for _ in 0..pixel_count { rgba.extend_from_slice(&[88, 166, 255, 255]); }
             egui::IconData { rgba, width: size, height: size }
         });
 
@@ -2112,5 +1882,5 @@ fn main() -> eframe::Result<()> {
             .with_icon(icon_data),
         ..Default::default()
     };
-    eframe::run_native("XTR Log Viewer", opts, Box::new(|_cc| Box::new(LogViewerApp::default())))
+    eframe::run_native("CLogViewer", opts, Box::new(|_cc| Box::new(LogViewerApp::default())))
 }
