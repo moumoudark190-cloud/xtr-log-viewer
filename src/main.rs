@@ -1887,5 +1887,5 @@ fn main() -> eframe::Result<()> {
             .with_icon(icon_data),
         ..Default::default()
     };
-    eframe::run_native("XTR Log Viewer", opts, Box::new(|_cc| Box::new(LogViewerApp::default())))
+    eframe::run_native("CLogViewer", opts, Box::new(|_cc| Box::new(LogViewerApp::default())))
 }
