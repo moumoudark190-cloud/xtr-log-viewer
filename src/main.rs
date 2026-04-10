@@ -718,8 +718,6 @@ fn render_match_context(painter: &egui::Painter, pos: egui::Pos2,
     }
 }
 
-// ─── ghost_btn / icon_btn helpers ──────────────────────────────────────────
-
 /// A lightweight outlined "ghost" button — for secondary actions like Wrap, Nav.
 fn ghost_btn<'a>(label: &'a str, active: bool, col: &Colors) -> Button<'a> {
     let (fg, bg, stroke) = if active {
@@ -853,7 +851,7 @@ impl App for LogViewerApp {
             });
 
         // ════════════════════════════════════════════════════════════════════
-        // TOOLBAR  ── redesigned per UX critique
+        // TOOLBAR
         // ════════════════════════════════════════════════════════════════════
         egui::TopBottomPanel::top("toolbar")
             .exact_height(44.0)
@@ -903,7 +901,6 @@ impl App for LogViewerApp {
                                 });
                             });
 
-                        // Module dropdown — only when a file is loaded
                         if !self.modules.is_empty() {
                             let lbl = if self.module_filter.is_empty() { "All modules".to_string() }
                                 else if self.module_filter.len() > 16
@@ -930,18 +927,16 @@ impl App for LogViewerApp {
                         }
                     }
 
-                    // ── DIVIDER ───────────────────────────────────────────
                     ui.add(egui::Separator::default().vertical().spacing(4.0));
 
                     // ── MIDDLE GROUP: level toggles ───────────────────────
                     {
-                        let dm = self.dark_mode;
                         let defs: [(usize,&str,Color32); 5] = [
-                            (0,"ERR",Level::Error.color_for(dm)),
-                            (1,"WRN",Level::Warning.color_for(dm)),
-                            (2,"INF",Level::Info.color_for(dm)),
-                            (3,"DBG",Level::Debug.color_for(dm)),
-                            (4,"TRC",Level::Trace.color_for(dm)),
+                            (0,"ERR",Level::Error.color()),
+                            (1,"WRN",Level::Warning.color()),
+                            (2,"INF",Level::Info.color()),
+                            (3,"DBG",Level::Debug.color()),
+                            (4,"TRC",Level::Trace.color()),
                         ];
                         let mut fc = false;
                         for (idx, lbl, lv_color) in defs {
@@ -976,7 +971,6 @@ impl App for LogViewerApp {
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                         ui.spacing_mut().item_spacing.x = 4.0;
 
-                        // ① Theme toggle — absolute far right, visually separated
                         let theme_icon = if self.dark_mode { "☀" } else { "🌙" };
                         let theme_tip  = if self.dark_mode { "Light mode" } else { "Dark mode" };
                         if ui.add(icon_btn(theme_icon, &col)).on_hover_text(theme_tip).clicked() {
@@ -985,7 +979,6 @@ impl App for LogViewerApp {
 
                         ui.add(egui::Separator::default().vertical().spacing(6.0));
 
-                        // ② File actions — only shown once a file is loaded.
                         if !self.all_lines.is_empty() {
                             if ui.add(
                                 Button::new(RichText::new("🗑  Clear")
@@ -1007,7 +1000,6 @@ impl App for LogViewerApp {
 
                             ui.add(egui::Separator::default().vertical().spacing(6.0));
 
-                            // ③ View-settings group: Wrap · Nav · font −/+
                             if ui.add(
                                 Button::new(RichText::new("⊕").font(FontId::proportional(15.0)).color(col.muted))
                                     .fill(col.bg_input).stroke(Stroke::new(0.5, col.border))
@@ -1205,7 +1197,7 @@ impl App for LogViewerApp {
                         let wy0 = (by0 + vt * ah).min(r.max.y - 4.0);
                         let wy1 = (by0 + vb * ah).clamp(wy0 + 4.0, r.max.y);
                         painter.rect(
-                            egui::Rect::from_min_max(egui::pos2(r.min.x + 0.5, wy0), egui::pos2(r.max.x - 0.5, wy1)),
+                            egui::Rect::from_min_size(egui::pos2(r.min.x + 0.5, wy0), egui::pos2(r.max.x - 0.5, wy1)),
                             Rounding::same(2.0),
                             Color32::from_rgba_unmultiplied(col.accent.r(), col.accent.g(), col.accent.b(), 20),
                             Stroke::new(1.0, Color32::from_rgba_unmultiplied(col.accent.r(), col.accent.g(), col.accent.b(), 120)));
@@ -1430,7 +1422,9 @@ impl App for LogViewerApp {
                 let n = self.filtered.len(); let visible_height = ui.available_height();
 
                 let mut sa = ScrollArea::vertical().id_source("log_scroll").auto_shrink(false)
-                    .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden);
+                    .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden)
+                    .frame(egui::Frame::none()); // Remove default frame that could add spacing
+
                 if let Some(off) = self.scroll_to_offset.take() {
                     sa = sa.scroll_offset(Vec2::new(0.0, off));
                 }
@@ -1441,9 +1435,12 @@ impl App for LogViewerApp {
                     .get(self.search.current_match_idx)
                     .map(|m| m.row_idx);
 
-                let out = sa.show_rows(ui, row_h, n, |ui, row_range| {
-                    ui.spacing_mut().item_spacing = Vec2::ZERO;
+                // ✅ CRITICAL FIX: Set item_spacing.y = 0 BEFORE show_rows so
+                // show_rows computes total height = n * row_h (no extra spacing)
+                ui.spacing_mut().item_spacing = Vec2::ZERO;
 
+                let out = sa.show_rows(ui, row_h, n, |ui, row_range| {
+                    // item_spacing is already zero here; no need to set again.
                     for row_idx in row_range {
                         let line_idx = match self.filtered.get(row_idx) { Some(&i)=>i, None=>continue };
                         let line     = match self.all_lines.get(line_idx) { Some(l)=>l, None=>continue };
@@ -1887,5 +1884,5 @@ fn main() -> eframe::Result<()> {
             .with_icon(icon_data),
         ..Default::default()
     };
-    eframe::run_native("CLogViewer", opts, Box::new(|_cc| Box::new(LogViewerApp::default())))
+    eframe::run_native("XTR Log Viewer", opts, Box::new(|_cc| Box::new(LogViewerApp::default())))
 }
