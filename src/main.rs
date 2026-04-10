@@ -29,11 +29,21 @@ impl Level {
     }
     fn color(self) -> Color32 {
         match self {
-            Self::Error   => Color32::from_rgb(255, 110, 100),
-            Self::Warning => Color32::from_rgb(240, 190,  70),
-            Self::Info    => Color32::from_rgb( 80, 205, 105),
-            Self::Debug   => Color32::from_rgb(100, 180, 255),
-            Self::Trace   => Color32::from_gray(120),
+            Self::Error   => Color32::from_rgb(239,  68,  68),  // #EF4444
+            Self::Warning => Color32::from_rgb(245, 158,  11),  // #F59E0B
+            Self::Info    => Color32::from_rgb( 16, 185, 129),  // #10B981
+            Self::Debug   => Color32::from_rgb( 59, 130, 246),  // #3B82F6
+            Self::Trace   => Color32::from_rgb(107, 114, 128),  // #6B7280
+        }
+    }
+    fn color_for(self, dark: bool) -> Color32 {
+        if dark { return self.color(); }
+        match self {
+            Self::Error   => Color32::from_rgb(220,  38,  38),  // #DC2626
+            Self::Warning => Color32::from_rgb(217, 119,   6),  // #D97706
+            Self::Info    => Color32::from_rgb(  5, 150, 105),  // #059669
+            Self::Debug   => Color32::from_rgb( 37,  99, 235),  // #2563EB
+            Self::Trace   => Color32::from_rgb( 75,  85,  99),  // #4B5563
         }
     }
     fn row_bg(self) -> Option<Color32> {
@@ -73,40 +83,40 @@ struct Colors {
 impl Colors {
     fn dark() -> Self {
         Self {
-            bg_base:      Color32::from_rgb(13,  17,  23),
-            bg_panel:     Color32::from_rgb(28,  34,  46),
-            bg_input:     Color32::from_rgb(10,  13,  20),
+            bg_base:      Color32::from_rgb(17,  24,  39),   // #111827
+            bg_panel:     Color32::from_rgb(31,  41,  55),   // #1F2937
+            bg_input:     Color32::from_rgb(55,  65,  81),   // #374151
             bg_row_hover: Color32::from_rgba_premultiplied(255,255,255,10),
-            bg_row_sel:   Color32::from_rgba_premultiplied(88,166,255,45),
-            bg_toolbar:   Color32::from_rgb(18,  22,  32),
-            bg_search:    Color32::from_rgb(22,  27,  38),
-            border:       Color32::from_rgb(36,  42,  52),
-            border_hl:    Color32::from_rgb(58,  68,  84),
-            text:         Color32::from_rgb(215, 222, 232),
-            muted:        Color32::from_rgb(140, 148, 160),
-            faint:        Color32::from_rgb(82,  88,  100),
-            accent:       Color32::from_rgb(88,  166, 255),
-            match_hl:     Color32::from_rgb(255, 213,  79),
-            ts_color:     Color32::from_rgb(150, 205, 255),
+            bg_row_sel:   Color32::from_rgba_premultiplied(59,130,246,45),
+            bg_toolbar:   Color32::from_rgb(31,  41,  55),   // #1F2937
+            bg_search:    Color32::from_rgb(55,  65,  81),   // #374151
+            border:       Color32::from_rgb(55,  65,  81),   // #374151
+            border_hl:    Color32::from_rgb(75,  85, 100),
+            text:         Color32::from_rgb(243, 244, 246),  // #F3F4F6
+            muted:        Color32::from_rgb(156, 163, 175),  // #9CA3AF
+            faint:        Color32::from_rgb(107, 114, 128),  // #6B7280
+            accent:       Color32::from_rgb(59,  130, 246),  // #3B82F6
+            match_hl:     Color32::from_rgb(245, 158,  11),  // #F59E0B
+            ts_color:     Color32::from_rgb(147, 197, 253),
         }
     }
     fn light() -> Self {
         Self {
-            bg_base:      Color32::from_rgb(248, 250, 255),
-            bg_panel:     Color32::from_rgb(235, 240, 250),
-            bg_input:     Color32::from_rgb(255, 255, 255),
-            bg_row_hover: Color32::from_rgba_premultiplied(0, 0, 0, 12),
-            bg_row_sel:   Color32::from_rgba_premultiplied(30,100,220,40),
-            bg_toolbar:   Color32::from_rgb(228, 234, 248),
+            bg_base:      Color32::from_rgb(255, 255, 255),  // #FFFFFF
+            bg_panel:     Color32::from_rgb(243, 244, 246),  // #F3F4F6
+            bg_input:     Color32::from_rgb(255, 255, 255),  // #FFFFFF
+            bg_row_hover: Color32::from_rgba_premultiplied(0,0,0,10),
+            bg_row_sel:   Color32::from_rgba_premultiplied(37,99,235,35),
+            bg_toolbar:   Color32::from_rgb(243, 244, 246),  // #F3F4F6
             bg_search:    Color32::from_rgb(255, 255, 255),
-            border:       Color32::from_rgb(200, 210, 225),
-            border_hl:    Color32::from_rgb(150, 170, 200),
-            text:         Color32::from_rgb(20,  30,  50),
-            muted:        Color32::from_rgb(90,  100, 125),
-            faint:        Color32::from_rgb(155, 165, 185),
-            accent:       Color32::from_rgb(30,  110, 220),
-            match_hl:     Color32::from_rgb(200, 140,   0),
-            ts_color:     Color32::from_rgb(30,  90,  190),
+            border:       Color32::from_rgb(209, 213, 219),  // #D1D5DB
+            border_hl:    Color32::from_rgb(156, 163, 175),
+            text:         Color32::from_rgb(17,  24,  39),   // #111827
+            muted:        Color32::from_rgb(107, 114, 128),  // #6B7280
+            faint:        Color32::from_rgb(107, 114, 128),
+            accent:       Color32::from_rgb(37,  99,  235),  // #2563EB
+            match_hl:     Color32::from_rgb(217, 119,   6),  // #D97706
+            ts_color:     Color32::from_rgb(37,  99,  235),
         }
     }
 
@@ -116,24 +126,24 @@ impl Colors {
             v.panel_fill          = self.bg_panel;
             v.window_fill         = self.bg_base;
             v.override_text_color = Some(self.text);
-            v.widgets.inactive.bg_fill   = Color32::from_rgb(24, 30, 40);
+            v.widgets.inactive.bg_fill   = Color32::from_rgb(55, 65, 81);
             v.widgets.inactive.bg_stroke = Stroke::new(0.5, self.border);
-            v.widgets.hovered.bg_fill    = Color32::from_rgb(34, 42, 54);
+            v.widgets.hovered.bg_fill    = Color32::from_rgb(75, 85, 99);
             v.widgets.hovered.bg_stroke  = Stroke::new(0.5, self.border_hl);
-            v.widgets.active.bg_fill     = Color32::from_rgb(50, 60, 76);
-            v.selection.bg_fill          = Color32::from_rgba_unmultiplied(88, 166, 255, 65);
+            v.widgets.active.bg_fill     = Color32::from_rgb(90, 100, 115);
+            v.selection.bg_fill          = Color32::from_rgba_unmultiplied(59, 130, 246, 65);
             v
         } else {
             let mut v = egui::Visuals::light();
             v.panel_fill          = self.bg_panel;
             v.window_fill         = self.bg_base;
             v.override_text_color = Some(self.text);
-            v.widgets.inactive.bg_fill   = Color32::from_rgb(225, 232, 245);
+            v.widgets.inactive.bg_fill   = Color32::from_rgb(229, 231, 235);
             v.widgets.inactive.bg_stroke = Stroke::new(0.5, self.border);
-            v.widgets.hovered.bg_fill    = Color32::from_rgb(210, 220, 238);
+            v.widgets.hovered.bg_fill    = Color32::from_rgb(209, 213, 219);
             v.widgets.hovered.bg_stroke  = Stroke::new(0.5, self.border_hl);
-            v.widgets.active.bg_fill     = Color32::from_rgb(190, 205, 230);
-            v.selection.bg_fill          = Color32::from_rgba_unmultiplied(30, 110, 220, 65);
+            v.widgets.active.bg_fill     = Color32::from_rgb(191, 199, 210);
+            v.selection.bg_fill          = Color32::from_rgba_unmultiplied(37, 99, 235, 65);
             v
         }
     }
@@ -708,7 +718,7 @@ fn render_match_context(painter: &egui::Painter, pos: egui::Pos2,
     }
 }
 
-// ─── ghost_btn / toggle_btn helpers ──────────────────────────────────────────
+// ─── ghost_btn / icon_btn helpers ──────────────────────────────────────────
 
 /// A lightweight outlined "ghost" button — for secondary actions like Wrap, Nav.
 fn ghost_btn<'a>(label: &'a str, active: bool, col: &Colors) -> Button<'a> {
@@ -844,10 +854,6 @@ impl App for LogViewerApp {
 
         // ════════════════════════════════════════════════════════════════════
         // TOOLBAR  ── redesigned per UX critique
-        //
-        //  [LEFT]  filter-bar  |  module-dropdown
-        //  [MID]   ERR WRN INF DBG TRC  (desaturated when inactive)
-        //  [RIGHT] ── wrap · nav · − font + ──  open · clear    theme⬤
         // ════════════════════════════════════════════════════════════════════
         egui::TopBottomPanel::top("toolbar")
             .exact_height(44.0)
@@ -863,9 +869,7 @@ impl App for LogViewerApp {
                     // ── LEFT GROUP: filter bar + module dropdown ──────────
                     {
                         let filter_active = !self.filter_text.is_empty();
-                        let search_border = if filter_active {
-                            Color32::from_rgba_unmultiplied(col.accent.r(), col.accent.g(), col.accent.b(), 160)
-                        } else { col.border_hl };
+                        let search_border = if filter_active { col.accent } else { col.border_hl };
 
                         egui::Frame::none()
                             .fill(col.bg_search)
@@ -930,37 +934,32 @@ impl App for LogViewerApp {
                     ui.add(egui::Separator::default().vertical().spacing(4.0));
 
                     // ── MIDDLE GROUP: level toggles ───────────────────────
-                    // Inactive toggles use desaturated color so only active
-                    // ones (or those with data) draw the eye.
                     {
+                        let dm = self.dark_mode;
                         let defs: [(usize,&str,Color32); 5] = [
-                            (0,"ERR",Level::Error.color()),
-                            (1,"WRN",Level::Warning.color()),
-                            (2,"INF",Level::Info.color()),
-                            (3,"DBG",Level::Debug.color()),
-                            (4,"TRC",Level::Trace.color()),
+                            (0,"ERR",Level::Error.color_for(dm)),
+                            (1,"WRN",Level::Warning.color_for(dm)),
+                            (2,"INF",Level::Info.color_for(dm)),
+                            (3,"DBG",Level::Debug.color_for(dm)),
+                            (4,"TRC",Level::Trace.color_for(dm)),
                         ];
                         let mut fc = false;
                         for (idx, lbl, lv_color) in defs {
                             let active  = self.show[idx];
                             let has_data = self.counts[idx] > 0;
 
-                            // When inactive: dim everything to near-grey.
-                            // When active but no data: show a faint outline.
-                            // When active and has data: full color.
                             let (fg, bg, border_col) = if !active {
-                                // Off — recede completely
-                                (col.faint, Color32::TRANSPARENT, Stroke::new(0.5, col.border))
-                            } else if !has_data {
-                                // Active, but 0 lines of this level → dim
                                 (Color32::from_rgba_unmultiplied(lv_color.r(), lv_color.g(), lv_color.b(), 90),
                                  Color32::TRANSPARENT,
-                                 Stroke::new(0.5, Color32::from_rgba_unmultiplied(lv_color.r(), lv_color.g(), lv_color.b(), 60)))
+                                 Stroke::new(1.0, Color32::from_rgba_unmultiplied(lv_color.r(), lv_color.g(), lv_color.b(), 55)))
+                            } else if !has_data {
+                                (Color32::from_rgba_unmultiplied(lv_color.r(), lv_color.g(), lv_color.b(), 110),
+                                 Color32::TRANSPARENT,
+                                 Stroke::new(1.0, Color32::from_rgba_unmultiplied(lv_color.r(), lv_color.g(), lv_color.b(), 70)))
                             } else {
-                                // Active with data → full vibrancy
-                                (lv_color,
-                                 Color32::from_rgba_unmultiplied(lv_color.r(), lv_color.g(), lv_color.b(), 22),
-                                 Stroke::new(1.0, Color32::from_rgba_unmultiplied(lv_color.r(), lv_color.g(), lv_color.b(), 140)))
+                                (col.bg_base,
+                                 lv_color,
+                                 Stroke::NONE)
                             };
 
                             if ui.add(Button::new(
@@ -987,7 +986,6 @@ impl App for LogViewerApp {
                         ui.add(egui::Separator::default().vertical().spacing(6.0));
 
                         // ② File actions — only shown once a file is loaded.
-                        //    Empty state redirects users to the large center CTA.
                         if !self.all_lines.is_empty() {
                             if ui.add(
                                 Button::new(RichText::new("🗑  Clear")
@@ -1010,14 +1008,21 @@ impl App for LogViewerApp {
                             ui.add(egui::Separator::default().vertical().spacing(6.0));
 
                             // ③ View-settings group: Wrap · Nav · font −/+
-                            //    Font size uses − / + to make the action obvious.
-                            if ui.add(icon_btn("+", &col)).on_hover_text("Larger font").clicked() {
+                            if ui.add(
+                                Button::new(RichText::new("⊕").font(FontId::proportional(15.0)).color(col.muted))
+                                    .fill(col.bg_input).stroke(Stroke::new(0.5, col.border))
+                                    .rounding(Rounding::same(6.0)).min_size(Vec2::new(28.0, 26.0))
+                            ).on_hover_text("Larger font").clicked() {
                                 self.font_size = (self.font_size + 1.0).clamp(9.0, 20.0);
                                 self.row_height = self.font_size + 8.0;
                             }
                             ui.label(RichText::new(format!("{}pt", self.font_size as u8))
                                 .font(FontId::monospace(10.0)).color(col.faint));
-                            if ui.add(icon_btn("−", &col)).on_hover_text("Smaller font").clicked() {
+                            if ui.add(
+                                Button::new(RichText::new("⊖").font(FontId::proportional(15.0)).color(col.muted))
+                                    .fill(col.bg_input).stroke(Stroke::new(0.5, col.border))
+                                    .rounding(Rounding::same(6.0)).min_size(Vec2::new(28.0, 26.0))
+                            ).on_hover_text("Smaller font").clicked() {
                                 self.font_size = (self.font_size - 1.0).clamp(9.0, 20.0);
                                 self.row_height = self.font_size + 8.0;
                             }
@@ -1058,11 +1063,11 @@ impl App for LogViewerApp {
                     ui.spacing_mut().item_spacing.x = 14.0;
                     let mk = |n: usize, s: &str, c: Color32|
                         RichText::new(format!("{} {}", n, s)).color(c).font(FontId::monospace(10.5));
-                    ui.label(mk(self.counts[0],"errors",   Level::Error.color()));
-                    ui.label(mk(self.counts[1],"warnings", Level::Warning.color()));
-                    ui.label(mk(self.counts[2],"info",     Level::Info.color()));
-                    ui.label(mk(self.counts[3],"debug",    Level::Debug.color()));
-                    ui.label(mk(self.counts[4],"trace",    Level::Trace.color()));
+                    ui.label(mk(self.counts[0],"errors",   Level::Error.color_for(self.dark_mode)));
+                    ui.label(mk(self.counts[1],"warnings", Level::Warning.color_for(self.dark_mode)));
+                    ui.label(mk(self.counts[2],"info",     Level::Info.color_for(self.dark_mode)));
+                    ui.label(mk(self.counts[3],"debug",    Level::Debug.color_for(self.dark_mode)));
+                    ui.label(mk(self.counts[4],"trace",    Level::Trace.color_for(self.dark_mode)));
                     if !self.search.matches.is_empty() {
                         ui.add(egui::Separator::default().vertical().spacing(6.0));
                         ui.label(RichText::new(format!("Match {}/{}",
@@ -1130,7 +1135,7 @@ impl App for LogViewerApp {
                             let lbl = |s: &str| RichText::new(s).color(col.faint).font(FontId::monospace(9.5));
                             let val = |s: String| RichText::new(s).color(col.text).font(FontId::monospace(11.0));
                             ui.label(lbl("LINE"));   ui.label(val(line.num.to_string()));
-                            ui.label(lbl("LEVEL"));  ui.label(RichText::new(line.level.label()).color(line.level.color()).strong().font(FontId::monospace(11.0)));
+                            ui.label(lbl("LEVEL"));  ui.label(RichText::new(line.level.label()).color(line.level.color_for(self.dark_mode)).strong().font(FontId::monospace(11.0)));
                             ui.end_row();
                             ui.label(lbl("TIME"));   ui.label(val(line.timestamp.clone()));
                             ui.label(lbl("Δ TIME")); ui.label(val(line.delta_ms.map(format_delta).unwrap_or_else(||"—".into())));
@@ -1473,7 +1478,7 @@ impl App for LogViewerApp {
                             let xo = if is_bookmarked { 3.0 } else { 0.0 };
                             ui.painter().rect_filled(
                                 egui::Rect::from_min_size(egui::pos2(row_rect.min.x+xo, row_rect.min.y), Vec2::new(2.5, row_h)),
-                                Rounding::ZERO, line.level.color());
+                                Rounding::ZERO, line.level.color_for(self.dark_mode));
                         }
                         if let Some(kind) = nav_kind {
                             let c = kind.color();
@@ -1503,7 +1508,7 @@ impl App for LogViewerApp {
                         }}
                         x += COL_DT;
 
-                        p.text(egui::pos2(x, y), Align2::LEFT_CENTER, line.level.label(), fsm.clone(), line.level.color());
+                        p.text(egui::pos2(x, y), Align2::LEFT_CENTER, line.level.label(), fsm.clone(), line.level.color_for(self.dark_mode));
                         x += COL_LV;
 
                         let md = if line.module.len()>22 { &line.module[..22] } else { &line.module };
@@ -1821,7 +1826,7 @@ impl LogViewerApp {
                             painter.rect_filled(egui::Rect::from_min_size(rect.min, Vec2::new(3.0,rh)),
                                 Rounding::ZERO, col.accent);
                         }
-                        let lc = mat.level.color();
+                        let lc = mat.level.color_for(self.dark_mode);
                         painter.rect_filled(
                             egui::Rect::from_min_size(egui::pos2(rect.min.x+4.0, rect.min.y+5.0), Vec2::new(2.0, rh-10.0)),
                             Rounding::same(1.0), lc);
@@ -1882,5 +1887,5 @@ fn main() -> eframe::Result<()> {
             .with_icon(icon_data),
         ..Default::default()
     };
-    eframe::run_native("CLogViewer", opts, Box::new(|_cc| Box::new(LogViewerApp::default())))
+    eframe::run_native("XTR Log Viewer", opts, Box::new(|_cc| Box::new(LogViewerApp::default())))
 }
