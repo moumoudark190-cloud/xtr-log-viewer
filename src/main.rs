@@ -1200,7 +1200,7 @@ impl App for LogViewerApp {
                         let wy0 = (by0 + vt * ah).min(r.max.y - 4.0);
                         let wy1 = (by0 + vb * ah).clamp(wy0 + 4.0, r.max.y);
                         painter.rect(
-                            egui::Rect::from_min_size(egui::pos2(r.min.x + 0.5, wy0), egui::pos2(r.max.x - 0.5, wy1)),
+                            egui::Rect::from_min_max(egui::pos2(r.min.x + 0.5, wy0), egui::pos2(r.max.x - 0.5, wy1)),
                             Rounding::same(2.0),
                             Color32::from_rgba_unmultiplied(col.accent.r(), col.accent.g(), col.accent.b(), 20),
                             Stroke::new(1.0, Color32::from_rgba_unmultiplied(col.accent.r(), col.accent.g(), col.accent.b(), 120)));
