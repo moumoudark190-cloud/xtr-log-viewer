@@ -29,21 +29,21 @@ impl Level {
     }
     fn color(self) -> Color32 {
         match self {
-            Self::Error   => Color32::from_rgb(239,  68,  68),  // #EF4444
-            Self::Warning => Color32::from_rgb(245, 158,  11),  // #F59E0B
-            Self::Info    => Color32::from_rgb( 16, 185, 129),  // #10B981
-            Self::Debug   => Color32::from_rgb( 59, 130, 246),  // #3B82F6
-            Self::Trace   => Color32::from_rgb(107, 114, 128),  // #6B7280
+            Self::Error   => Color32::from_rgb(239,  68,  68),
+            Self::Warning => Color32::from_rgb(245, 158,  11),
+            Self::Info    => Color32::from_rgb( 16, 185, 129),
+            Self::Debug   => Color32::from_rgb( 59, 130, 246),
+            Self::Trace   => Color32::from_rgb(107, 114, 128),
         }
     }
     fn color_for(self, dark: bool) -> Color32 {
         if dark { return self.color(); }
         match self {
-            Self::Error   => Color32::from_rgb(220,  38,  38),  // #DC2626
-            Self::Warning => Color32::from_rgb(217, 119,   6),  // #D97706
-            Self::Info    => Color32::from_rgb(  5, 150, 105),  // #059669
-            Self::Debug   => Color32::from_rgb( 37,  99, 235),  // #2563EB
-            Self::Trace   => Color32::from_rgb( 75,  85,  99),  // #4B5563
+            Self::Error   => Color32::from_rgb(220,  38,  38),
+            Self::Warning => Color32::from_rgb(217, 119,   6),
+            Self::Info    => Color32::from_rgb(  5, 150, 105),
+            Self::Debug   => Color32::from_rgb( 37,  99, 235),
+            Self::Trace   => Color32::from_rgb( 75,  85,  99),
         }
     }
     fn row_bg(self) -> Option<Color32> {
@@ -83,39 +83,39 @@ struct Colors {
 impl Colors {
     fn dark() -> Self {
         Self {
-            bg_base:      Color32::from_rgb(17,  24,  39),   // #111827
-            bg_panel:     Color32::from_rgb(31,  41,  55),   // #1F2937
-            bg_input:     Color32::from_rgb(55,  65,  81),   // #374151
+            bg_base:      Color32::from_rgb(17,  24,  39),
+            bg_panel:     Color32::from_rgb(31,  41,  55),
+            bg_input:     Color32::from_rgb(55,  65,  81),
             bg_row_hover: Color32::from_rgba_premultiplied(255,255,255,10),
             bg_row_sel:   Color32::from_rgba_premultiplied(59,130,246,45),
-            bg_toolbar:   Color32::from_rgb(31,  41,  55),   // #1F2937
-            bg_search:    Color32::from_rgb(55,  65,  81),   // #374151
-            border:       Color32::from_rgb(55,  65,  81),   // #374151
+            bg_toolbar:   Color32::from_rgb(31,  41,  55),
+            bg_search:    Color32::from_rgb(55,  65,  81),
+            border:       Color32::from_rgb(55,  65,  81),
             border_hl:    Color32::from_rgb(75,  85, 100),
-            text:         Color32::from_rgb(243, 244, 246),  // #F3F4F6
-            muted:        Color32::from_rgb(156, 163, 175),  // #9CA3AF
-            faint:        Color32::from_rgb(107, 114, 128),  // #6B7280
-            accent:       Color32::from_rgb(59,  130, 246),  // #3B82F6
-            match_hl:     Color32::from_rgb(245, 158,  11),  // #F59E0B
+            text:         Color32::from_rgb(243, 244, 246),
+            muted:        Color32::from_rgb(156, 163, 175),
+            faint:        Color32::from_rgb(107, 114, 128),
+            accent:       Color32::from_rgb(59,  130, 246),
+            match_hl:     Color32::from_rgb(245, 158,  11),
             ts_color:     Color32::from_rgb(147, 197, 253),
         }
     }
     fn light() -> Self {
         Self {
-            bg_base:      Color32::from_rgb(255, 255, 255),  // #FFFFFF
-            bg_panel:     Color32::from_rgb(243, 244, 246),  // #F3F4F6
-            bg_input:     Color32::from_rgb(255, 255, 255),  // #FFFFFF
+            bg_base:      Color32::from_rgb(255, 255, 255),
+            bg_panel:     Color32::from_rgb(243, 244, 246),
+            bg_input:     Color32::from_rgb(255, 255, 255),
             bg_row_hover: Color32::from_rgba_premultiplied(0,0,0,10),
             bg_row_sel:   Color32::from_rgba_premultiplied(37,99,235,35),
-            bg_toolbar:   Color32::from_rgb(243, 244, 246),  // #F3F4F6
+            bg_toolbar:   Color32::from_rgb(243, 244, 246),
             bg_search:    Color32::from_rgb(255, 255, 255),
-            border:       Color32::from_rgb(209, 213, 219),  // #D1D5DB
+            border:       Color32::from_rgb(209, 213, 219),
             border_hl:    Color32::from_rgb(156, 163, 175),
-            text:         Color32::from_rgb(17,  24,  39),   // #111827
-            muted:        Color32::from_rgb(107, 114, 128),  // #6B7280
+            text:         Color32::from_rgb(17,  24,  39),
+            muted:        Color32::from_rgb(107, 114, 128),
             faint:        Color32::from_rgb(107, 114, 128),
-            accent:       Color32::from_rgb(37,  99,  235),  // #2563EB
-            match_hl:     Color32::from_rgb(217, 119,   6),  // #D97706
+            accent:       Color32::from_rgb(37,  99,  235),
+            match_hl:     Color32::from_rgb(217, 119,   6),
             ts_color:     Color32::from_rgb(37,  99,  235),
         }
     }
@@ -149,7 +149,74 @@ impl Colors {
     }
 }
 
-// ─── Premium Close Button Helper ─────────────────────────────────────────────
+// ─── Custom window control buttons ───────────────────────────────────────────
+
+fn win_btn_minimize(ui: &mut egui::Ui, col: &Colors) -> egui::Response {
+    let (rect, resp) = ui.allocate_exact_size(Vec2::new(46.0, 32.0), Sense::click());
+    let bg = if resp.hovered() {
+        Color32::from_rgba_unmultiplied(255, 255, 255, 20)
+    } else {
+        Color32::TRANSPARENT
+    };
+    ui.painter().rect_filled(rect, Rounding::ZERO, bg);
+    // Draw a horizontal dash
+    let cy = rect.center().y + 1.0;
+    let cx = rect.center().x;
+    ui.painter().hline((cx - 5.5)..=(cx + 5.5), cy,
+        Stroke::new(1.5, if resp.hovered() { col.text } else { col.muted }));
+    resp
+}
+
+fn win_btn_maximize(ui: &mut egui::Ui, col: &Colors, is_maximized: bool) -> egui::Response {
+    let (rect, resp) = ui.allocate_exact_size(Vec2::new(46.0, 32.0), Sense::click());
+    let bg = if resp.hovered() {
+        Color32::from_rgba_unmultiplied(255, 255, 255, 20)
+    } else {
+        Color32::TRANSPARENT
+    };
+    ui.painter().rect_filled(rect, Rounding::ZERO, bg);
+    let ic = if resp.hovered() { col.text } else { col.muted };
+    let stroke = Stroke::new(1.0, ic);
+    let cx = rect.center().x;
+    let cy = rect.center().y;
+    if is_maximized {
+        // Restore: two offset rectangles
+        let s = 8.0;
+        let r1 = egui::Rect::from_center_size(egui::pos2(cx + 1.5, cy - 1.5), Vec2::splat(s));
+        let r2 = egui::Rect::from_center_size(egui::pos2(cx - 1.5, cy + 1.5), Vec2::splat(s));
+        // Draw back rect partially (bottom + right only for "behind" look)
+        ui.painter().rect_stroke(r2, Rounding::ZERO, stroke);
+        // Cover back rect's top-left corner with bg fill
+        ui.painter().rect_filled(
+            egui::Rect::from_min_max(r2.min, r1.min + Vec2::new(s, s)),
+            Rounding::ZERO, bg,
+        );
+        ui.painter().rect_stroke(r1, Rounding::ZERO, stroke);
+    } else {
+        let r = egui::Rect::from_center_size(egui::pos2(cx, cy), Vec2::splat(10.0));
+        ui.painter().rect_stroke(r, Rounding::ZERO, stroke);
+    }
+    resp
+}
+
+fn win_btn_close(ui: &mut egui::Ui, col: &Colors) -> egui::Response {
+    let (rect, resp) = ui.allocate_exact_size(Vec2::new(46.0, 32.0), Sense::click());
+    let bg = if resp.hovered() { Color32::from_rgb(196, 43, 28) } else { Color32::TRANSPARENT };
+    ui.painter().rect_filled(rect, Rounding::ZERO, bg);
+    let ic = if resp.hovered() { Color32::WHITE } else { col.muted };
+    let cx = rect.center().x;
+    let cy = rect.center().y;
+    let d = 5.0;
+    ui.painter().line_segment(
+        [egui::pos2(cx - d, cy - d), egui::pos2(cx + d, cy + d)],
+        Stroke::new(1.5, ic));
+    ui.painter().line_segment(
+        [egui::pos2(cx + d, cy - d), egui::pos2(cx - d, cy + d)],
+        Stroke::new(1.5, ic));
+    resp
+}
+
+// ─── Premium Close Button Helper (used in dialogs/panels) ────────────────────
 
 fn premium_close_button(ui: &mut egui::Ui, col: &Colors) -> egui::Response {
     let size = Vec2::splat(28.0);
@@ -452,6 +519,7 @@ struct LogViewerApp {
     nav_custom_kw: String, nav_custom_kw_buf: String,
     bookmarks: Vec<usize>,
     dark_mode: bool,
+    is_maximized: bool,
 }
 
 impl Default for LogViewerApp {
@@ -474,6 +542,7 @@ impl Default for LogViewerApp {
             nav_custom_kw: String::new(), nav_custom_kw_buf: String::new(),
             bookmarks: vec![],
             dark_mode: true,
+            is_maximized: false,
         }
     }
 }
@@ -718,7 +787,6 @@ fn render_match_context(painter: &egui::Painter, pos: egui::Pos2,
     }
 }
 
-/// A lightweight outlined "ghost" button — for secondary actions like Wrap, Nav.
 fn ghost_btn<'a>(label: &'a str, active: bool, col: &Colors) -> Button<'a> {
     let (fg, bg, stroke) = if active {
         (col.accent,
@@ -731,7 +799,6 @@ fn ghost_btn<'a>(label: &'a str, active: bool, col: &Colors) -> Button<'a> {
         .fill(bg).stroke(stroke).rounding(Rounding::same(6.0)).min_size(Vec2::new(0.0, 26.0))
 }
 
-/// Icon-only tool button (font-size ±, etc.)
 fn icon_btn<'a>(icon: &'a str, col: &Colors) -> Button<'a> {
     Button::new(RichText::new(icon).color(col.muted).font(FontId::proportional(13.0)))
         .fill(col.bg_input).stroke(Stroke::new(0.5, col.border))
@@ -745,6 +812,10 @@ impl App for LogViewerApp {
         let col = if self.dark_mode { Colors::dark() } else { Colors::light() };
         ctx.set_visuals(col.visuals(self.dark_mode));
 
+        // Sync maximized state from viewport
+        self.is_maximized = ctx.input(|i| i.viewport().maximized.unwrap_or(false));
+
+        // Update window title (for taskbar)
         if let Some(ref path) = self.current_file {
             ctx.send_viewport_cmd(egui::ViewportCommand::Title(
                 format!("{} — CLogViewer", path.file_name().unwrap_or_default().to_string_lossy())));
@@ -783,29 +854,56 @@ impl App for LogViewerApp {
         });
 
         // ════════════════════════════════════════════════════════════════════
-        // MENU BAR
+        // UNIFIED TITLE BAR  (replaces OS decorations + old menu bar)
         // ════════════════════════════════════════════════════════════════════
-        egui::TopBottomPanel::top("menubar")
-            .exact_height(28.0)
+        let is_maximized = self.is_maximized;
+        egui::TopBottomPanel::top("titlebar")
+            .exact_height(32.0)
             .frame(egui::Frame::none()
-                .fill(col.bg_panel)
-                .stroke(Stroke::new(1.0, col.border)))
+                .fill(col.bg_toolbar)
+                // No stroke at all — visually merges with the toolbar below
+                .stroke(Stroke::NONE))
             .show(ctx, |ui| {
+                ui.spacing_mut().item_spacing = Vec2::ZERO;
+                let full_rect = ui.max_rect();
+
+                // ── Window control widths (right side) ──────────────────
+                let ctrl_w = 46.0 * 3.0; // 3 × 46 px buttons
+
+                // ── Drag region calculation ─────────────────────────────
+                // Reserve left for logo + menus, right for controls
+                // We render all elements, then paint drag region in between
                 ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing.x = 2.0;
-                    ui.visuals_mut().widgets.inactive.bg_fill   = Color32::TRANSPARENT;
-                    ui.visuals_mut().widgets.inactive.bg_stroke = Stroke::NONE;
-                    ui.visuals_mut().widgets.hovered.bg_fill    = Color32::from_rgba_unmultiplied(255, 255, 255, 12);
-                    ui.visuals_mut().widgets.hovered.bg_stroke  = Stroke::NONE;
-                    ui.visuals_mut().widgets.active.bg_fill     = Color32::from_rgba_unmultiplied(255, 255, 255, 18);
-                    ui.visuals_mut().widgets.active.bg_stroke   = Stroke::NONE;
-                    ui.add_space(8.0);
+                    ui.spacing_mut().item_spacing.x = 0.0;
+
+                    // ── Logo ────────────────────────────────────────────
+                    ui.add_space(10.0);
+                    let logo_size = Vec2::new(20.0, 20.0);
+                    let (logo_rect, _) = ui.allocate_exact_size(logo_size, Sense::hover());
+                    ui.painter().rect_filled(logo_rect, Rounding::same(5.0), col.accent);
+                    ui.painter().text(
+                        logo_rect.center(), Align2::CENTER_CENTER,
+                        "C", FontId::proportional(13.0),
+                        col.bg_base,
+                    );
+                    ui.add_space(6.0);
+
+                    // ── Menu buttons ────────────────────────────────────
+                    {
+                        let v = ui.visuals_mut();
+                        v.widgets.inactive.bg_fill   = Color32::TRANSPARENT;
+                        v.widgets.inactive.bg_stroke = Stroke::NONE;
+                        v.widgets.hovered.bg_fill    = Color32::from_rgba_unmultiplied(255, 255, 255, 14);
+                        v.widgets.hovered.bg_stroke  = Stroke::NONE;
+                        v.widgets.active.bg_fill     = Color32::from_rgba_unmultiplied(255, 255, 255, 20);
+                        v.widgets.active.bg_stroke   = Stroke::NONE;
+                    }
 
                     let mb = |label: &str| {
                         RichText::new(label).font(FontId::proportional(12.0)).color(col.muted)
                     };
 
-                    ui.menu_button(mb("File"), |ui| {
+                    ui.menu_button(mb("  File  "), |ui| {
                         ui.set_min_width(210.0);
                         ui.spacing_mut().item_spacing.y = 2.0;
                         if ui.button("📂  Open…  Ctrl+O").clicked() { self.open_file_dialog(); ui.close_menu(); }
@@ -823,7 +921,7 @@ impl App for LogViewerApp {
                         if ui.button("⏻  Exit  Alt+F4").clicked() { ctx.send_viewport_cmd(egui::ViewportCommand::Close); }
                     });
 
-                    ui.menu_button(mb("Help"), |ui| {
+                    ui.menu_button(mb("  Help  "), |ui| {
                         ui.set_min_width(240.0);
                         ui.add_space(4.0);
                         ui.label(RichText::new("KEYBOARD SHORTCUTS").font(FontId::monospace(9.5)).color(col.faint));
@@ -847,7 +945,59 @@ impl App for LogViewerApp {
                         }
                         ui.add_space(4.0);
                     });
+
+                    // ── Drag / title region (fills space between menus and controls) ──
+                    let drag_width = full_rect.width() - ui.cursor().min.x + full_rect.min.x - ctrl_w;
+                    let drag_width = drag_width.max(0.0);
+                    let (drag_rect, drag_resp) = ui.allocate_exact_size(
+                        Vec2::new(drag_width, 32.0),
+                        Sense::click_and_drag(),
+                    );
+
+                    // Drag to move window
+                    if drag_resp.dragged() {
+                        ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag);
+                    }
+                    // Double-click to toggle maximize
+                    if drag_resp.double_clicked() {
+                        ctx.send_viewport_cmd(egui::ViewportCommand::Maximize(!is_maximized));
+                    }
+
+                    // Window title centered in drag region
+                    let title_str = self.current_file.as_ref()
+                        .and_then(|p| p.file_name())
+                        .map(|n| {
+                            let name = n.to_string_lossy();
+                            // Truncate long names
+                            if name.len() > 40 { format!("…{}  —  CLogViewer", &name[name.len()-38..]) }
+                            else { format!("{}  —  CLogViewer", name) }
+                        })
+                        .unwrap_or_else(|| "CLogViewer".to_string());
+                    ui.painter().text(
+                        drag_rect.center(), Align2::CENTER_CENTER,
+                        &title_str,
+                        FontId::proportional(11.5),
+                        col.faint,
+                    );
+
+                    // ── Window controls ─────────────────────────────────
+                    if win_btn_minimize(ui, &col).clicked() {
+                        ctx.send_viewport_cmd(egui::ViewportCommand::Minimize(true));
+                    }
+                    if win_btn_maximize(ui, &col, is_maximized).clicked() {
+                        ctx.send_viewport_cmd(egui::ViewportCommand::Maximize(!is_maximized));
+                    }
+                    if win_btn_close(ui, &col).clicked() {
+                        ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                    }
                 });
+
+                // Bottom separator line — one pixel, same as toolbar's top
+                ui.painter().hline(
+                    full_rect.x_range(),
+                    full_rect.max.y - 0.5,
+                    Stroke::new(1.0, col.border),
+                );
             });
 
         // ════════════════════════════════════════════════════════════════════
@@ -940,7 +1090,7 @@ impl App for LogViewerApp {
                         ];
                         let mut fc = false;
                         for (idx, lbl, lv_color) in defs {
-                            let active  = self.show[idx];
+                            let active   = self.show[idx];
                             let has_data = self.counts[idx] > 0;
 
                             let (fg, bg, border_col) = if !active {
@@ -952,9 +1102,7 @@ impl App for LogViewerApp {
                                  Color32::TRANSPARENT,
                                  Stroke::new(1.0, Color32::from_rgba_unmultiplied(lv_color.r(), lv_color.g(), lv_color.b(), 70)))
                             } else {
-                                (col.bg_base,
-                                 lv_color,
-                                 Stroke::NONE)
+                                (col.bg_base, lv_color, Stroke::NONE)
                             };
 
                             if ui.add(Button::new(
@@ -971,6 +1119,7 @@ impl App for LogViewerApp {
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                         ui.spacing_mut().item_spacing.x = 4.0;
 
+                        // Theme toggle
                         let theme_icon = if self.dark_mode { "☀" } else { "🌙" };
                         let theme_tip  = if self.dark_mode { "Light mode" } else { "Dark mode" };
                         if ui.add(icon_btn(theme_icon, &col)).on_hover_text(theme_tip).clicked() {
@@ -978,6 +1127,53 @@ impl App for LogViewerApp {
                         }
 
                         ui.add(egui::Separator::default().vertical().spacing(6.0));
+
+                        // ── Dynamic line counter ──────────────────────────
+                        if !self.all_lines.is_empty() {
+                            // Show filtered / total with a subtle visual pill
+                            let all_n   = self.all_lines.len();
+                            let filt_n  = self.filtered.len();
+                            let is_filt = filt_n < all_n;
+
+                            let count_col = if is_filt { col.accent } else { col.faint };
+                            let count_str = if is_filt {
+                                format!("{} / {}", filt_n, all_n)
+                            } else {
+                                format!("{} lines", all_n)
+                            };
+
+                            egui::Frame::none()
+                                .fill(Color32::from_rgba_unmultiplied(
+                                    count_col.r(), count_col.g(), count_col.b(),
+                                    if is_filt { 18 } else { 10 }))
+                                .stroke(Stroke::new(0.5, Color32::from_rgba_unmultiplied(
+                                    count_col.r(), count_col.g(), count_col.b(),
+                                    if is_filt { 80 } else { 40 })))
+                                .rounding(Rounding::same(5.0))
+                                .inner_margin(egui::Margin::symmetric(7.0, 2.0))
+                                .show(ui, |ui| {
+                                    ui.label(RichText::new(&count_str)
+                                        .font(FontId::monospace(10.5))
+                                        .color(count_col));
+                                });
+
+                            // Search match indicator (if active)
+                            if !self.search.matches.is_empty() {
+                                let match_str = format!("{}/{}", self.search.current_match_idx + 1, self.search.matches.len());
+                                egui::Frame::none()
+                                    .fill(Color32::from_rgba_unmultiplied(col.match_hl.r(), col.match_hl.g(), col.match_hl.b(), 18))
+                                    .stroke(Stroke::new(0.5, Color32::from_rgba_unmultiplied(col.match_hl.r(), col.match_hl.g(), col.match_hl.b(), 80)))
+                                    .rounding(Rounding::same(5.0))
+                                    .inner_margin(egui::Margin::symmetric(7.0, 2.0))
+                                    .show(ui, |ui| {
+                                        ui.label(RichText::new(format!("⌕ {}", match_str))
+                                            .font(FontId::monospace(10.5))
+                                            .color(col.match_hl));
+                                    });
+                            }
+
+                            ui.add(egui::Separator::default().vertical().spacing(6.0));
+                        }
 
                         if !self.all_lines.is_empty() {
                             if ui.add(
@@ -1040,41 +1236,6 @@ impl App for LogViewerApp {
 
         // FIND DIALOG
         self.render_find_dialog(ctx, &col);
-
-        // ════════════════════════════════════════════════════════════════════
-        // STATUS BAR
-        // ════════════════════════════════════════════════════════════════════
-        egui::TopBottomPanel::bottom("statusbar")
-            .exact_height(26.0)
-            .frame(egui::Frame::none()
-                .fill(col.bg_panel)
-                .stroke(Stroke::new(1.0, col.border))
-                .inner_margin(egui::Margin::symmetric(14.0, 0.0)))
-            .show(ctx, |ui| {
-                ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing.x = 14.0;
-                    let mk = |n: usize, s: &str, c: Color32|
-                        RichText::new(format!("{} {}", n, s)).color(c).font(FontId::monospace(10.5));
-                    ui.label(mk(self.counts[0],"errors",   Level::Error.color_for(self.dark_mode)));
-                    ui.label(mk(self.counts[1],"warnings", Level::Warning.color_for(self.dark_mode)));
-                    ui.label(mk(self.counts[2],"info",     Level::Info.color_for(self.dark_mode)));
-                    ui.label(mk(self.counts[3],"debug",    Level::Debug.color_for(self.dark_mode)));
-                    ui.label(mk(self.counts[4],"trace",    Level::Trace.color_for(self.dark_mode)));
-                    if !self.search.matches.is_empty() {
-                        ui.add(egui::Separator::default().vertical().spacing(6.0));
-                        ui.label(RichText::new(format!("Match {}/{}",
-                            self.search.current_match_idx+1, self.search.matches.len()))
-                            .color(col.accent).font(FontId::monospace(10.5)));
-                    }
-                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        ui.label(RichText::new(format!("{} / {} lines",
-                            self.filtered.len(), self.all_lines.len()))
-                            .color(col.faint).font(FontId::monospace(10.5)));
-                        ui.add(egui::Separator::default().vertical().spacing(6.0));
-                        ui.label(RichText::new(&self.status).color(col.muted).font(FontId::monospace(10.5)));
-                    });
-                });
-            });
 
         // ════════════════════════════════════════════════════════════════════
         // DETAIL PANEL
@@ -1197,7 +1358,7 @@ impl App for LogViewerApp {
                         let wy0 = (by0 + vt * ah).min(r.max.y - 4.0);
                         let wy1 = (by0 + vb * ah).clamp(wy0 + 4.0, r.max.y);
                         painter.rect(
-                            egui::Rect::from_min_size(egui::pos2(r.min.x + 0.5, wy0), egui::pos2(r.max.x - 0.5, wy1)),
+                            egui::Rect::from_min_max(egui::pos2(r.min.x + 0.5, wy0), egui::pos2(r.max.x - 0.5, wy1)),
                             Rounding::same(2.0),
                             Color32::from_rgba_unmultiplied(col.accent.r(), col.accent.g(), col.accent.b(), 20),
                             Stroke::new(1.0, Color32::from_rgba_unmultiplied(col.accent.r(), col.accent.g(), col.accent.b(), 120)));
@@ -1423,7 +1584,7 @@ impl App for LogViewerApp {
 
                 let mut sa = ScrollArea::vertical().id_source("log_scroll").auto_shrink(false)
                     .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden)
-                    .frame(egui::Frame::none()); // Remove default frame that could add spacing
+                    .frame(egui::Frame::none());
 
                 if let Some(off) = self.scroll_to_offset.take() {
                     sa = sa.scroll_offset(Vec2::new(0.0, off));
@@ -1435,12 +1596,9 @@ impl App for LogViewerApp {
                     .get(self.search.current_match_idx)
                     .map(|m| m.row_idx);
 
-                // ✅ CRITICAL FIX: Set item_spacing.y = 0 BEFORE show_rows so
-                // show_rows computes total height = n * row_h (no extra spacing)
                 ui.spacing_mut().item_spacing = Vec2::ZERO;
 
                 let out = sa.show_rows(ui, row_h, n, |ui, row_range| {
-                    // item_spacing is already zero here; no need to set again.
                     for row_idx in row_range {
                         let line_idx = match self.filtered.get(row_idx) { Some(&i)=>i, None=>continue };
                         let line     = match self.all_lines.get(line_idx) { Some(l)=>l, None=>continue };
@@ -1877,12 +2035,14 @@ fn main() -> eframe::Result<()> {
 
     let opts = NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_title("XTR Log Viewer")
+            .with_title("CLogViewer")
             .with_inner_size([1440.0, 900.0])
             .with_min_inner_size([800.0, 400.0])
             .with_drag_and_drop(true)
+            .with_decorations(false)   // ← CSD: we draw our own title bar
+            .with_resizable(true)
             .with_icon(icon_data),
         ..Default::default()
     };
-    eframe::run_native("XTR Log Viewer", opts, Box::new(|_cc| Box::new(LogViewerApp::default())))
+    eframe::run_native("CLogViewer", opts, Box::new(|_cc| Box::new(LogViewerApp::default())))
 }
