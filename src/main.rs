@@ -7,10 +7,6 @@ use egui::{
 };
 use std::path::PathBuf;
 
-// ─── Unified title-bar background (same for BOTH themes — VS Code style) ─────
-// A deep blue-slate that reads as "chrome" against any page content.
-const TITLEBAR_BG: Color32 = Color32::from_rgb(22, 27, 42);
-
 // ─── Level ───────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -95,10 +91,10 @@ impl Colors {
             bg_toolbar:   Color32::from_rgb(24,  32,  46),
             bg_search:    Color32::from_rgb(35,  46,  64),
             border:       Color32::from_rgb(40,  52,  72),
-            border_hl:    Color32::from_rgb(60,  75,  100),
+            border_hl:    Color32::from_rgb(60,  75, 100),
             text:         Color32::from_rgb(220, 226, 240),
             muted:        Color32::from_rgb(140, 150, 170),
-            faint:        Color32::from_rgb(85,  98,  120),
+            faint:        Color32::from_rgb(85,  98, 120),
             accent:       Color32::from_rgb(79,  145, 255),
             match_hl:     Color32::from_rgb(245, 158,  11),
             ts_color:     Color32::from_rgb(130, 190, 255),
@@ -155,7 +151,7 @@ impl Colors {
 
 // ─── Window control buttons ───────────────────────────────────────────────────
 
-fn win_btn_minimize(ui: &mut egui::Ui) -> egui::Response {
+fn win_btn_minimize(ui: &mut egui::Ui, icon_color: Color32, hover_color: Color32) -> egui::Response {
     let (rect, resp) = ui.allocate_exact_size(Vec2::new(46.0, 32.0), Sense::click());
     if resp.hovered() {
         ui.painter().rect_filled(rect, Rounding::ZERO,
@@ -163,18 +159,18 @@ fn win_btn_minimize(ui: &mut egui::Ui) -> egui::Response {
     }
     let cy = rect.center().y + 1.0;
     let cx = rect.center().x;
-    let ic = if resp.hovered() { Color32::from_rgb(220,225,240) } else { Color32::from_rgb(130,142,165) };
+    let ic = if resp.hovered() { hover_color } else { icon_color };
     ui.painter().hline((cx - 5.5)..=(cx + 5.5), cy, Stroke::new(1.5, ic));
     resp
 }
 
-fn win_btn_maximize(ui: &mut egui::Ui, is_maximized: bool) -> egui::Response {
+fn win_btn_maximize(ui: &mut egui::Ui, is_maximized: bool, icon_color: Color32, hover_color: Color32) -> egui::Response {
     let (rect, resp) = ui.allocate_exact_size(Vec2::new(46.0, 32.0), Sense::click());
     if resp.hovered() {
         ui.painter().rect_filled(rect, Rounding::ZERO,
             Color32::from_rgba_unmultiplied(255, 255, 255, 18));
     }
-    let ic = if resp.hovered() { Color32::from_rgb(220,225,240) } else { Color32::from_rgb(130,142,165) };
+    let ic = if resp.hovered() { hover_color } else { icon_color };
     let stroke = Stroke::new(1.0, ic);
     let cx = rect.center().x; let cy = rect.center().y;
     if is_maximized {
@@ -184,7 +180,7 @@ fn win_btn_maximize(ui: &mut egui::Ui, is_maximized: bool) -> egui::Response {
         ui.painter().rect_stroke(r2, Rounding::ZERO, stroke);
         ui.painter().rect_filled(
             egui::Rect::from_min_max(r2.min, r1.min + Vec2::new(s, s)),
-            Rounding::ZERO, TITLEBAR_BG);
+            Rounding::ZERO, ui.visuals().window_fill);
         ui.painter().rect_stroke(r1, Rounding::ZERO, stroke);
     } else {
         let r = egui::Rect::from_center_size(egui::pos2(cx, cy), Vec2::splat(10.0));
@@ -193,11 +189,11 @@ fn win_btn_maximize(ui: &mut egui::Ui, is_maximized: bool) -> egui::Response {
     resp
 }
 
-fn win_btn_close(ui: &mut egui::Ui) -> egui::Response {
+fn win_btn_close(ui: &mut egui::Ui, icon_color: Color32) -> egui::Response {
     let (rect, resp) = ui.allocate_exact_size(Vec2::new(46.0, 32.0), Sense::click());
     let bg = if resp.hovered() { Color32::from_rgb(196, 43, 28) } else { Color32::TRANSPARENT };
     ui.painter().rect_filled(rect, Rounding::ZERO, bg);
-    let ic = if resp.hovered() { Color32::WHITE } else { Color32::from_rgb(130,142,165) };
+    let ic = if resp.hovered() { Color32::WHITE } else { icon_color };
     let cx = rect.center().x; let cy = rect.center().y; let d = 5.0;
     ui.painter().line_segment([egui::pos2(cx-d, cy-d), egui::pos2(cx+d, cy+d)], Stroke::new(1.5, ic));
     ui.painter().line_segment([egui::pos2(cx+d, cy-d), egui::pos2(cx-d, cy+d)], Stroke::new(1.5, ic));
@@ -223,7 +219,6 @@ fn draw_logo(painter: &egui::Painter, center: egui::Pos2, size: f32) {
     let r = size / 2.0;
     let rect = egui::Rect::from_center_size(center, Vec2::splat(size));
 
-    // Outer rounded square — gradient-look via two stacked rects
     painter.rect_filled(rect, Rounding::same(r * 0.38), accent2);
     painter.rect_filled(
         egui::Rect::from_min_max(rect.min, egui::pos2(rect.max.x, rect.center().y)),
@@ -231,12 +226,10 @@ fn draw_logo(painter: &egui::Painter, center: egui::Pos2, size: f32) {
         accent,
     );
 
-    // Bold "C" — arc approximated with two half-circle line segments
     let letter_r = r * 0.50;
     let lc = center;
-    // Draw as three painter arcs (top, left, bottom) approximated with line segments
     let thick = Stroke::new(r * 0.22, Color32::WHITE);
-    let gap_angle: f32 = 0.55; // radians — controls how open the C is
+    let gap_angle: f32 = 0.55;
     let start = gap_angle;
     let end   = std::f32::consts::TAU - gap_angle;
     let steps = 32usize;
@@ -869,13 +862,38 @@ impl App for LogViewerApp {
         });
 
         // ════════════════════════════════════════════════════════════════════
-        // TITLE BAR  — fixed TITLEBAR_BG, never changes with theme
+        // TITLE BAR  — theme-aware to match toolbar (homogeneous look)
         // ════════════════════════════════════════════════════════════════════
         let is_maximized = self.is_maximized;
+        let is_dark = self.dark_mode;
+        
+        // Theme-aware colors for window controls
+        let win_icon_color = if is_dark { 
+            Color32::from_rgb(130, 142, 165) 
+        } else { 
+            Color32::from_rgb(95, 105, 125)
+        };
+        let win_icon_hover = if is_dark {
+            Color32::from_rgb(220, 225, 240)
+        } else {
+            Color32::from_rgb(50, 55, 65)
+        };
+        
+        // Title bar background now matches toolbar for homogeneous look
+        let titlebar_bg = col.bg_toolbar;
+        let titlebar_border = col.border;
+        
+        // Menu text colors adapted for both themes
+        let menu_text_col = if is_dark { 
+            Color32::from_rgb(185, 192, 210) 
+        } else { 
+            Color32::from_rgb(75, 85, 105)
+        };
+        
         egui::TopBottomPanel::top("titlebar")
             .exact_height(30.0)
             .frame(egui::Frame::none()
-                .fill(TITLEBAR_BG)
+                .fill(titlebar_bg)
                 .stroke(Stroke::NONE))
             .show(ctx, |ui| {
                 ui.spacing_mut().item_spacing = Vec2::ZERO;
@@ -894,31 +912,32 @@ impl App for LogViewerApp {
                     ui.add_space(4.0);
 
                     // ── VS Code–style menu items: transparent, text-only ────
-                    // Override button visuals so they're invisible until hovered
                     {
                         let v = ui.visuals_mut();
                         v.override_text_color = None;
                         v.widgets.inactive.bg_fill   = Color32::TRANSPARENT;
                         v.widgets.inactive.bg_stroke = Stroke::NONE;
-                        v.widgets.hovered.bg_fill    = Color32::from_rgba_unmultiplied(255, 255, 255, 16);
+                        v.widgets.hovered.bg_fill    = if is_dark {
+                            Color32::from_rgba_unmultiplied(255, 255, 255, 16)
+                        } else {
+                            Color32::from_rgba_unmultiplied(0, 0, 0, 12)
+                        };
                         v.widgets.hovered.bg_stroke  = Stroke::NONE;
-                        v.widgets.active.bg_fill     = Color32::from_rgba_unmultiplied(255, 255, 255, 24);
+                        v.widgets.active.bg_fill     = if is_dark {
+                            Color32::from_rgba_unmultiplied(255, 255, 255, 24)
+                        } else {
+                            Color32::from_rgba_unmultiplied(0, 0, 0, 20)
+                        };
                         v.widgets.active.bg_stroke   = Stroke::NONE;
                     }
 
-                    // Text color for menu items: always muted-white on the dark titlebar
-                    let menu_text_col = Color32::from_rgb(185, 192, 210);
-                    let menu_text_hov = Color32::from_rgb(230, 235, 248);
-
-                    let menu_label = |label: &str, ui: &egui::Ui| -> RichText {
-                        let _ = ui; // not checking hover here, done inside menu_button
+                    let menu_label = |label: &str| -> RichText {
                         RichText::new(label)
                             .font(FontId::proportional(12.0))
                             .color(menu_text_col)
                     };
-                    let _ = menu_text_hov; // available for future use
 
-                    ui.menu_button(menu_label("  File  ", ui), |ui| {
+                    ui.menu_button(menu_label("  File  "), |ui| {
                         ui.set_min_width(210.0);
                         ui.spacing_mut().item_spacing.y = 2.0;
                         if ui.button("📂  Open…  Ctrl+O").clicked() { self.open_file_dialog(); ui.close_menu(); }
@@ -936,7 +955,7 @@ impl App for LogViewerApp {
                         if ui.button("⏻  Exit  Alt+F4").clicked() { ctx.send_viewport_cmd(egui::ViewportCommand::Close); }
                     });
 
-                    ui.menu_button(menu_label("  Help  ", ui), |ui| {
+                    ui.menu_button(menu_label("  Help  "), |ui| {
                         ui.set_min_width(240.0);
                         ui.add_space(4.0);
                         ui.label(RichText::new("KEYBOARD SHORTCUTS").font(FontId::monospace(9.5)).color(col.faint));
@@ -974,7 +993,7 @@ impl App for LogViewerApp {
                         ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(!is_maximized));
                     }
 
-                    // Centered title — always light text on the dark bar
+                    // Centered title — theme-aware color
                     let title_str = self.current_file.as_ref()
                         .and_then(|p| p.file_name())
                         .map(|n| {
@@ -983,29 +1002,34 @@ impl App for LogViewerApp {
                             else               { format!("{}  —  CLogViewer",   name) }
                         })
                         .unwrap_or_else(|| "CLogViewer".to_string());
+                    let title_color = if is_dark {
+                        Color32::from_rgb(110, 122, 148)
+                    } else {
+                        Color32::from_rgb(120, 130, 150)
+                    };
                     ui.painter().text(
                         drag_rect.center(), Align2::CENTER_CENTER,
                         &title_str, FontId::proportional(11.5),
-                        Color32::from_rgb(110, 122, 148),
+                        title_color,
                     );
 
                     // ── Window controls ─────────────────────────────────────
-                    if win_btn_minimize(ui).clicked() {
+                    if win_btn_minimize(ui, win_icon_color, win_icon_hover).clicked() {
                         ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true));
                     }
-                    if win_btn_maximize(ui, is_maximized).clicked() {
+                    if win_btn_maximize(ui, is_maximized, win_icon_color, win_icon_hover).clicked() {
                         ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(!is_maximized));
                     }
-                    if win_btn_close(ui).clicked() {
+                    if win_btn_close(ui, win_icon_color).clicked() {
                         ctx.send_viewport_cmd(egui::ViewportCommand::Close);
                     }
                 });
 
-                // 1-px separator between title bar and toolbar
+                // 1-px separator between title bar and toolbar — theme-aware
                 ui.painter().hline(
                     full_rect.x_range(),
                     full_rect.max.y - 0.5,
-                    Stroke::new(1.0, Color32::from_rgb(14, 18, 30)),
+                    Stroke::new(1.0, titlebar_border),
                 );
             });
 
@@ -1552,7 +1576,6 @@ impl App for LogViewerApp {
                     p.text(egui::pos2(x0+COL_LN+COL_TS+COL_DT,     y), Align2::LEFT_CENTER, "LVL",     fid.clone(), hcol);
                     p.text(egui::pos2(x0+COL_LN+COL_TS+COL_DT+COL_LV,      y), Align2::LEFT_CENTER, "MODULE",  fid.clone(), hcol);
                     p.text(egui::pos2(x0+COL_LN+COL_TS+COL_DT+COL_LV+COL_MOD, y), Align2::LEFT_CENTER, "MESSAGE", fid.clone(), hcol);
-                    // header bottom border
                     p.hline(hr.x_range(), hr.max.y - 0.5, Stroke::new(1.0, col.border));
                 }
 
@@ -1901,7 +1924,7 @@ impl LogViewerApp {
                                 }
                                 if ui.add(Button::new(RichText::new("💾 Export").color(col.muted).font(FontId::proportional(10.5)))
                                     .fill(col.bg_input).stroke(Stroke::new(0.5, col.border))
-                                    .rounding(Rounding::same(5.0)).min_size(Vec2::new(0.0,24.0))).clicked() {
+                                    .rounding(Rounding::same(5.0).min_size(Vec2::new(0.0,24.0))).clicked() {
                                     self.export_search_results();
                                 }
                             });
@@ -1988,9 +2011,9 @@ fn main() -> eframe::Result<()> {
             .with_title("CLogViewer")
             .with_inner_size([1440.0, 900.0])
             .with_min_inner_size([800.0, 400.0])
-            .with_maximized(true)          // ← open fullscreen/maximized on first launch
+            .with_maximized(true)
             .with_drag_and_drop(true)
-            .with_decorations(false)       // custom title bar
+            .with_decorations(false)
             .with_resizable(true)
             .with_icon(icon_data),
         ..Default::default()
