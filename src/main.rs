@@ -219,6 +219,7 @@ fn draw_logo(painter: &egui::Painter, center: egui::Pos2, size: f32) {
     let r = size / 2.0;
     let rect = egui::Rect::from_center_size(center, Vec2::splat(size));
 
+    // Outer rounded square — gradient-look via two stacked rects
     painter.rect_filled(rect, Rounding::same(r * 0.38), accent2);
     painter.rect_filled(
         egui::Rect::from_min_max(rect.min, egui::pos2(rect.max.x, rect.center().y)),
@@ -226,6 +227,7 @@ fn draw_logo(painter: &egui::Painter, center: egui::Pos2, size: f32) {
         accent,
     );
 
+    // Bold "C" — arc approximated with two half-circle line segments
     let letter_r = r * 0.50;
     let lc = center;
     let thick = Stroke::new(r * 0.22, Color32::WHITE);
@@ -1924,7 +1926,7 @@ impl LogViewerApp {
                                 }
                                 if ui.add(Button::new(RichText::new("💾 Export").color(col.muted).font(FontId::proportional(10.5)))
                                     .fill(col.bg_input).stroke(Stroke::new(0.5, col.border))
-                                    .rounding(Rounding::same(5.0).min_size(Vec2::new(0.0,24.0))).clicked() {
+                                    .rounding(Rounding::same(5.0)).min_size(Vec2::new(0.0,24.0))).clicked() {
                                     self.export_search_results();
                                 }
                             });
