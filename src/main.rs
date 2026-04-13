@@ -159,7 +159,6 @@ fn win_btn_minimize(ui: &mut egui::Ui, col: &Colors) -> egui::Response {
         Color32::TRANSPARENT
     };
     ui.painter().rect_filled(rect, Rounding::ZERO, bg);
-    // Draw a horizontal dash
     let cy = rect.center().y + 1.0;
     let cx = rect.center().x;
     ui.painter().hline((cx - 5.5)..=(cx + 5.5), cy,
@@ -180,13 +179,10 @@ fn win_btn_maximize(ui: &mut egui::Ui, col: &Colors, is_maximized: bool) -> egui
     let cx = rect.center().x;
     let cy = rect.center().y;
     if is_maximized {
-        // Restore: two offset rectangles
         let s = 8.0;
         let r1 = egui::Rect::from_center_size(egui::pos2(cx + 1.5, cy - 1.5), Vec2::splat(s));
         let r2 = egui::Rect::from_center_size(egui::pos2(cx - 1.5, cy + 1.5), Vec2::splat(s));
-        // Draw back rect partially (bottom + right only for "behind" look)
         ui.painter().rect_stroke(r2, Rounding::ZERO, stroke);
-        // Cover back rect's top-left corner with bg fill
         ui.painter().rect_filled(
             egui::Rect::from_min_max(r2.min, r1.min + Vec2::new(s, s)),
             Rounding::ZERO, bg,
@@ -815,7 +811,7 @@ impl App for LogViewerApp {
         // Sync maximized state from viewport
         self.is_maximized = ctx.input(|i| i.viewport().maximized.unwrap_or(false));
 
-        // Update window title (for taskbar)
+        // Update window title
         if let Some(ref path) = self.current_file {
             ctx.send_viewport_cmd(egui::ViewportCommand::Title(
                 format!("{} — CLogViewer", path.file_name().unwrap_or_default().to_string_lossy())));
@@ -854,29 +850,24 @@ impl App for LogViewerApp {
         });
 
         // ════════════════════════════════════════════════════════════════════
-        // UNIFIED TITLE BAR  (replaces OS decorations + old menu bar)
+        // UNIFIED TITLE BAR
         // ════════════════════════════════════════════════════════════════════
         let is_maximized = self.is_maximized;
         egui::TopBottomPanel::top("titlebar")
             .exact_height(32.0)
             .frame(egui::Frame::none()
                 .fill(col.bg_toolbar)
-                // No stroke at all — visually merges with the toolbar below
                 .stroke(Stroke::NONE))
             .show(ctx, |ui| {
                 ui.spacing_mut().item_spacing = Vec2::ZERO;
                 let full_rect = ui.max_rect();
 
-                // ── Window control widths (right side) ──────────────────
-                let ctrl_w = 46.0 * 3.0; // 3 × 46 px buttons
+                let ctrl_w = 46.0 * 3.0;
 
-                // ── Drag region calculation ─────────────────────────────
-                // Reserve left for logo + menus, right for controls
-                // We render all elements, then paint drag region in between
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 0.0;
 
-                    // ── Logo ────────────────────────────────────────────
+                    // Logo
                     ui.add_space(10.0);
                     let logo_size = Vec2::new(20.0, 20.0);
                     let (logo_rect, _) = ui.allocate_exact_size(logo_size, Sense::hover());
@@ -888,7 +879,7 @@ impl App for LogViewerApp {
                     );
                     ui.add_space(6.0);
 
-                    // ── Menu buttons ────────────────────────────────────
+                    // Menu buttons
                     {
                         let v = ui.visuals_mut();
                         v.widgets.inactive.bg_fill   = Color32::TRANSPARENT;
@@ -946,7 +937,7 @@ impl App for LogViewerApp {
                         ui.add_space(4.0);
                     });
 
-                    // ── Drag / title region (fills space between menus and controls) ──
+                    // Drag / title region
                     let drag_width = full_rect.width() - ui.cursor().min.x + full_rect.min.x - ctrl_w;
                     let drag_width = drag_width.max(0.0);
                     let (drag_rect, drag_resp) = ui.allocate_exact_size(
@@ -954,21 +945,18 @@ impl App for LogViewerApp {
                         Sense::click_and_drag(),
                     );
 
-                    // Drag to move window
                     if drag_resp.dragged() {
                         ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag);
                     }
-                    // Double-click to toggle maximize
+                    // FIX 1: Maximize → Maximized
                     if drag_resp.double_clicked() {
-                        ctx.send_viewport_cmd(egui::ViewportCommand::Maximize(!is_maximized));
+                        ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(!is_maximized));
                     }
 
-                    // Window title centered in drag region
                     let title_str = self.current_file.as_ref()
                         .and_then(|p| p.file_name())
                         .map(|n| {
                             let name = n.to_string_lossy();
-                            // Truncate long names
                             if name.len() > 40 { format!("…{}  —  CLogViewer", &name[name.len()-38..]) }
                             else { format!("{}  —  CLogViewer", name) }
                         })
@@ -980,19 +968,20 @@ impl App for LogViewerApp {
                         col.faint,
                     );
 
-                    // ── Window controls ─────────────────────────────────
+                    // Window controls
+                    // FIX 2: Minimize → Minimized
                     if win_btn_minimize(ui, &col).clicked() {
-                        ctx.send_viewport_cmd(egui::ViewportCommand::Minimize(true));
+                        ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true));
                     }
+                    // FIX 3: Maximize → Maximized
                     if win_btn_maximize(ui, &col, is_maximized).clicked() {
-                        ctx.send_viewport_cmd(egui::ViewportCommand::Maximize(!is_maximized));
+                        ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(!is_maximized));
                     }
                     if win_btn_close(ui, &col).clicked() {
                         ctx.send_viewport_cmd(egui::ViewportCommand::Close);
                     }
                 });
 
-                // Bottom separator line — one pixel, same as toolbar's top
                 ui.painter().hline(
                     full_rect.x_range(),
                     full_rect.max.y - 0.5,
@@ -1014,7 +1003,7 @@ impl App for LogViewerApp {
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 6.0;
 
-                    // ── LEFT GROUP: filter bar + module dropdown ──────────
+                    // LEFT GROUP: filter bar + module dropdown
                     {
                         let filter_active = !self.filter_text.is_empty();
                         let search_border = if filter_active { col.accent } else { col.border_hl };
@@ -1079,7 +1068,7 @@ impl App for LogViewerApp {
 
                     ui.add(egui::Separator::default().vertical().spacing(4.0));
 
-                    // ── MIDDLE GROUP: level toggles ───────────────────────
+                    // MIDDLE GROUP: level toggles
                     {
                         let defs: [(usize,&str,Color32); 5] = [
                             (0,"ERR",Level::Error.color()),
@@ -1115,11 +1104,10 @@ impl App for LogViewerApp {
                         if fc { self.apply_filters(); }
                     }
 
-                    // ── RIGHT GROUP (right-to-left layout) ────────────────
+                    // RIGHT GROUP
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                         ui.spacing_mut().item_spacing.x = 4.0;
 
-                        // Theme toggle
                         let theme_icon = if self.dark_mode { "☀" } else { "🌙" };
                         let theme_tip  = if self.dark_mode { "Light mode" } else { "Dark mode" };
                         if ui.add(icon_btn(theme_icon, &col)).on_hover_text(theme_tip).clicked() {
@@ -1128,9 +1116,7 @@ impl App for LogViewerApp {
 
                         ui.add(egui::Separator::default().vertical().spacing(6.0));
 
-                        // ── Dynamic line counter ──────────────────────────
                         if !self.all_lines.is_empty() {
-                            // Show filtered / total with a subtle visual pill
                             let all_n   = self.all_lines.len();
                             let filt_n  = self.filtered.len();
                             let is_filt = filt_n < all_n;
@@ -1157,7 +1143,6 @@ impl App for LogViewerApp {
                                         .color(count_col));
                                 });
 
-                            // Search match indicator (if active)
                             if !self.search.matches.is_empty() {
                                 let match_str = format!("{}/{}", self.search.current_match_idx + 1, self.search.matches.len());
                                 egui::Frame::none()
@@ -1582,9 +1567,11 @@ impl App for LogViewerApp {
                 let row_h = self.row_height; let font_sz = self.font_size;
                 let n = self.filtered.len(); let visible_height = ui.available_height();
 
-                let mut sa = ScrollArea::vertical().id_source("log_scroll").auto_shrink(false)
-                    .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden)
-                    .frame(egui::Frame::none());
+                // FIX 4: removed .frame() call (not available in egui 0.27)
+                let mut sa = ScrollArea::vertical()
+                    .id_source("log_scroll")
+                    .auto_shrink(false)
+                    .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden);
 
                 if let Some(off) = self.scroll_to_offset.take() {
                     sa = sa.scroll_offset(Vec2::new(0.0, off));
@@ -1598,7 +1585,8 @@ impl App for LogViewerApp {
 
                 ui.spacing_mut().item_spacing = Vec2::ZERO;
 
-                let out = sa.show_rows(ui, row_h, n, |ui, row_range| {
+                // FIX 5: explicit type annotation on closure parameter
+                let out = sa.show_rows(ui, row_h, n, |ui: &mut egui::Ui, row_range| {
                     for row_idx in row_range {
                         let line_idx = match self.filtered.get(row_idx) { Some(&i)=>i, None=>continue };
                         let line     = match self.all_lines.get(line_idx) { Some(l)=>l, None=>continue };
@@ -2039,7 +2027,7 @@ fn main() -> eframe::Result<()> {
             .with_inner_size([1440.0, 900.0])
             .with_min_inner_size([800.0, 400.0])
             .with_drag_and_drop(true)
-            .with_decorations(false)   // ← CSD: we draw our own title bar
+            .with_decorations(false)
             .with_resizable(true)
             .with_icon(icon_data),
         ..Default::default()
